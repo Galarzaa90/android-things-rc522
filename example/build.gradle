@@ -1,0 +1,32 @@
+apply from: '../dependencies.gradle'
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion versions.compileSdk
+    buildToolsVersion versions.buildTools
+    defaultConfig {
+        applicationId "com.galarzaa.androidthings.samples"
+        minSdkVersion versions.minSdk
+        targetSdkVersion versions.compileSdk
+        versionCode versions.publishVersionCode
+        versionName versions.publishVersion
+        jackOptions {
+            enabled true
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+dependencies {
+    compile project(':rc522')
+    compile fileTree(include: ['*.jar'], dir: 'libs')
+    compile 'com.google.android.things:androidthings:'+versions.thingsLib
+    compile 'com.android.support:appcompat-v7:25.3.1'
+    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+}

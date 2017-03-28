@@ -1,0 +1,10 @@
+ext.versions = [
+        minSdk: 24,
+        compileSdk: 25,
+        buildTools: '25.0.2',
+        publishVersion: '0.1.0',
+        publishVersionCode: 1,
+        gradleVersion: '2.3.0',
+
+        thingsLib: '0.2-devpreview'
+]

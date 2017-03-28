@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Things RC522</string>
+    <string name="start">Start</string>
+    <string name="reading">Reading</string>
+    <string name="tag_detected">Tag detected:</string>
+</resources>
