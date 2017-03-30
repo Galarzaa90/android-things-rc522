@@ -69,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
                 if(success){
                     success = rc522.antiCollisionDetect();
                     if(success){
-                        return rc522.backData;
+                        return rc522.getUuid();
                     }
                 }
                 try {

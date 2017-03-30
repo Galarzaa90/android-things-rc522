@@ -28,8 +28,10 @@ public class Rc522 {
     private Gpio irqPin;
     private int busSpeed = 1000000;
 
-    public byte[] backData;
-    public int backLength;
+    private byte[] uuid;
+
+    private byte[] backData;
+    private int backLength;
 
     private boolean irq = false;
 
@@ -85,9 +87,7 @@ public class Rc522 {
     private static final byte REGISTER_MODE = 0x11;
     private static final byte REGISTER_BIT_FRAMING = 0x0D;
 
-
-
-    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin){
+    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin) throws IOException {
         this.context = context;
         this.device = spiDevice;
         this.resetPin = resetPin;
@@ -95,7 +95,7 @@ public class Rc522 {
         initializeDevice();
     }
 
-    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin, int speed){
+    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin, int speed) throws IOException {
         this.context = context;
         this.device = spiDevice;
         this.resetPin = resetPin;
@@ -104,36 +104,48 @@ public class Rc522 {
         initializeDevice();
     }
 
-    private void setListener(RfidListener listener){
-        this.listener = listener;
+    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin, Gpio irqPin, int speed) throws IOException {
+        this.context = context;
+        this.device = spiDevice;
+        this.resetPin = resetPin;
+        this.irqPin = irqPin;
+        this.handler = new Handler(context.getMainLooper());
+        this.busSpeed = speed;
+        initializeDevice();
     }
 
-    private void initializeDevice(){
-        try {
-            device.setFrequency(busSpeed);
-            resetPin.setDirection(Gpio.DIRECTION_OUT_INITIALLY_HIGH);
-            /*irqPin.setDirection(Gpio.DIRECTION_IN);
+
+    /**
+     * Performs the inital device setup and configure the pins used
+     */
+    private void initializeDevice() throws IOException {
+        device.setFrequency(busSpeed);
+        resetPin.setDirection(Gpio.DIRECTION_OUT_INITIALLY_HIGH);
+        if(irqPin != null) {
+            irqPin.setDirection(Gpio.DIRECTION_IN);
             irqPin.setEdgeTriggerType(Gpio.EDGE_FALLING);
-            irqPin.registerGpioCallback(new IrqCallback());*/
-        } catch (IOException e) {
-            e.printStackTrace();
+            irqPin.registerGpioCallback(new IrqCallback());
         }
         reset();
-        spiWrite(REGISTER_TIMER_MODE, (byte) 0x8D);
-        spiWrite(REGISTER_TIMER_PRESCALER_MODE, (byte) 0x3E);
-        spiWrite(REGISTER_TIMER_RELOAD_LOW, (byte) 30);
-        spiWrite(REGISTER_TIMER_RELOAD_HIGH, (byte) 0);
-        spiWrite(REGISTER_TX_MODE, (byte) 0x40);
-        spiWrite(REGISTER_MODE, (byte) 0x3D);
+        writeRegister(REGISTER_TIMER_MODE, (byte) 0x8D);
+        writeRegister(REGISTER_TIMER_PRESCALER_MODE, (byte) 0x3E);
+        writeRegister(REGISTER_TIMER_RELOAD_LOW, (byte) 30);
+        writeRegister(REGISTER_TIMER_RELOAD_HIGH, (byte) 0);
+        writeRegister(REGISTER_TX_MODE, (byte) 0x40);
+        writeRegister(REGISTER_MODE, (byte) 0x3D);
         setAntenna(true);
 
     }
 
-    private void reset(){
-        spiWrite(REGISTER_COMMAND, COMMAND_SOFT_RESET);
+    public byte[] getUuid(){
+        return uuid;
     }
 
-    private void spiWrite(byte address, byte value){
+    private void reset(){
+        writeRegister(REGISTER_COMMAND, COMMAND_SOFT_RESET);
+    }
+
+    private void writeRegister(byte address, byte value){
         byte buffer[] = {(byte) (((address << 1) & 0x7E)), value};
         byte response[] = new byte[buffer.length];
         try {
@@ -143,7 +155,7 @@ public class Rc522 {
         }
     }
 
-    private byte spiRead(byte address){
+    private byte readRegister(byte address){
         byte buffer[] = {(byte) (((address << 1) & 0x7E) | 0x80), 0};
         byte response[] = new byte[buffer.length];
         try {
@@ -157,7 +169,7 @@ public class Rc522 {
 
     private void setAntenna(boolean enabled){
         if(enabled){
-            byte currentState = spiRead(REGISTER_TX_CONTROL);
+            byte currentState = readRegister(REGISTER_TX_CONTROL);
             if((currentState & 0x03) != 0x03){
                 setBitMask(REGISTER_TX_CONTROL, (byte) 0x03);
             }
@@ -167,13 +179,13 @@ public class Rc522 {
     }
 
     private void setBitMask(byte address, byte mask){
-        byte value = spiRead(address);
-        spiWrite(address, (byte) (value | mask));
+        byte value = readRegister(address);
+        writeRegister(address, (byte) (value | mask));
     }
 
     private void clearBitMask(byte address, byte mask){
-        byte value = spiRead(address);
-        spiWrite(address, (byte) (value & (~mask)));
+        byte value = readRegister(address);
+        writeRegister(address, (byte) (value & (~mask)));
     }
 
     private boolean writeCard(byte command, byte [] data){
@@ -191,23 +203,23 @@ public class Rc522 {
             irq = 0x77;
             irqWait = 0x30;
         }
-        spiWrite(REGISTER_INTERRUPT_ENABLE, (byte) (irq | 0x80));
+        writeRegister(REGISTER_INTERRUPT_ENABLE, (byte) (irq | 0x80));
         clearBitMask(REGISTER_COM_IRQ, (byte) 0x80);
         setBitMask(REGISTER_FIFO_LEVEL, (byte) 0x80);
-        spiWrite(REGISTER_COMMAND, COMMAND_IDLE);
+        writeRegister(REGISTER_COMMAND, COMMAND_IDLE);
 
         for(byte d : data){
-            spiWrite(REGISTER_FIFO_DATA, d);
+            writeRegister(REGISTER_FIFO_DATA, d);
         }
 
-        spiWrite(REGISTER_COMMAND, command);
+        writeRegister(REGISTER_COMMAND, command);
         if(command == COMMAND_TRANSCEIVE){
             setBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
         }
         int i = 2000;
         byte n = 0;
         while(true){
-            n = spiRead(REGISTER_COM_IRQ);
+            n = readRegister(REGISTER_COM_IRQ);
             i--;
             if ((i == 0) || (n & 0x01) > 0 || (n & irqWait) > 0){
                 break;
@@ -216,7 +228,7 @@ public class Rc522 {
         clearBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
 
         if(i != 0){
-            if((spiRead(REGISTER_ERROR) & 0x1B) == 0x00){
+            if((readRegister(REGISTER_ERROR) & 0x1B) == 0x00){
                 success = true;
 
                 if ((n & irq & 0x01) > 0) {
@@ -224,8 +236,8 @@ public class Rc522 {
                 }
 
                 if(command == COMMAND_TRANSCEIVE){
-                    n = spiRead(REGISTER_FIFO_LEVEL);
-                    lastBits = (byte) (spiRead(REGISTER_CONTROL) & 0x07);
+                    n = readRegister(REGISTER_FIFO_LEVEL);
+                    lastBits = (byte) (readRegister(REGISTER_CONTROL) & 0x07);
                     if(lastBits != 0){
                         backLength = (n-1)* 8 + lastBits;
                     }else{
@@ -241,7 +253,7 @@ public class Rc522 {
                     }
 
                     for(i = 0; i < n; i++){
-                        backData[i] = spiRead(REGISTER_FIFO_DATA);
+                        backData[i] = readRegister(REGISTER_FIFO_DATA);
                     }
                 }
             }else {
@@ -258,7 +270,7 @@ public class Rc522 {
     public boolean request(byte requestMode){
         byte tagType[]=new byte[]{requestMode};
 
-        spiWrite(REGISTER_BIT_FRAMING, (byte) 0x07);
+        writeRegister(REGISTER_BIT_FRAMING, (byte) 0x07);
 
         boolean success =  writeCard(COMMAND_TRANSCEIVE, tagType);
         if(!success || backLength != 0x10){
@@ -274,7 +286,7 @@ public class Rc522 {
         int serial_number_check = 0;
         int i;
 
-        spiWrite(REGISTER_BIT_FRAMING, (byte) 0x00);
+        writeRegister(REGISTER_BIT_FRAMING, (byte) 0x00);
         serial_number[0] = COMMAND_ANTICOLLISION;
         serial_number[1] = 0x20;
 
@@ -285,11 +297,10 @@ public class Rc522 {
                     serial_number_check ^= backData[i];
                 }
                 if(serial_number_check != backData[4]){
-                    success = false;
+                    return false;
                 }
-            }else{
-                success = true;
             }
+            uuid = backData;
         }
         return success;
     }
@@ -299,24 +310,24 @@ public class Rc522 {
         clearBitMask(REGISTER_DIV_IRQ, (byte) 0x04);
         setBitMask(REGISTER_FIFO_LEVEL, (byte) 0x80);
         for(int i = 0;i < data.length-2; i++){
-            spiWrite(REGISTER_FIFO_DATA, data[i]);
+            writeRegister(REGISTER_FIFO_DATA, data[i]);
         }
-        spiWrite(REGISTER_COMMAND, COMMAND_CALCULATE_CRC);
+        writeRegister(REGISTER_COMMAND, COMMAND_CALCULATE_CRC);
         int i = 255;
         byte n;
         while(true){
-            n = spiRead(REGISTER_DIV_IRQ);
+            n = readRegister(REGISTER_DIV_IRQ);
             i--;
             if((i == 0) || ((n & 0x04)> 0)){
                 break;
             }
         }
-        returnData[0] = spiRead(REGISTER_CRC_RESULT_LOW);
-        returnData[1] = spiRead(REGISTER_CRC_RESULT_HIGH);
+        returnData[0] = readRegister(REGISTER_CRC_RESULT_LOW);
+        returnData[1] = readRegister(REGISTER_CRC_RESULT_HIGH);
         return returnData;
     }
 
-    public boolean selectTag(byte [] uid){
+    public boolean selectTag(byte[] uid){
         boolean success;
         byte data[]=new byte[9];
         int i,j;
@@ -340,19 +351,19 @@ public class Rc522 {
         }
     }
 
-    public boolean authenticateCard(byte auth_mode,byte block_address,byte []key,byte []uid){
+    public boolean authenticateCard(byte authMode,byte blockAddress,byte []key,byte []uid){
         byte data[]=new byte[12];
         int i,j;
 
-        data[0]=auth_mode;
-        data[1]=block_address;
+        data[0]=authMode;
+        data[1]=blockAddress;
         for(i=0,j=2;i<6;i++,j++)
             data[j]=key[i];
         for(i=0,j=8;i<4;i++,j++)
             data[j]=uid[i];
 
         boolean success = writeCard(COMMAND_MF_AUTHENT, data);
-        if((spiRead(REGISTER_RXTX_STATUS) & 0x08) == 0){
+        if((readRegister(REGISTER_RXTX_STATUS) & 0x08) == 0){
             success = false;
         }
         return success;
@@ -362,16 +373,16 @@ public class Rc522 {
         clearBitMask(REGISTER_RXTX_STATUS, (byte) 0x08);
     }
 
-    public boolean read(byte block_address)
+    public boolean readBlock(byte blockAddress)
     {
         byte data[]=new byte[4];
         data[0]=COMMAND_READ;
-        data[1]=block_address;
+        data[1]=blockAddress;
         byte[] crc = calculateCrc(data);
         data[2] = crc[0];
         data[3] = crc[1];
         boolean success = writeCard(COMMAND_TRANSCEIVE, data);
-        if(backLength != 16){
+        if(backData.length != 16){
             success = false;
         }
         return success;
@@ -408,11 +419,13 @@ public class Rc522 {
         return success;
     }
 
-    private void startCardReader(){
-        this.initializeDevice();
+
+    public void setListener(RfidListener listener) throws IOException {
+        this.listener = listener;
+        initializeDevice();
         irqRunnable.terminate();
-        spiWrite(REGISTER_COM_IRQ, (byte) 0x00);
-        spiWrite(REGISTER_INTERRUPT_ENABLE, (byte) 0xA0);
+        writeRegister(REGISTER_COM_IRQ, (byte) 0x00);
+        writeRegister(REGISTER_INTERRUPT_ENABLE, (byte) 0xA0);
         irqThread = new Thread();
         irqThread.run();
     }
@@ -437,9 +450,9 @@ public class Rc522 {
         @Override
         public void run() {
             while(running && !irq){
-                spiWrite(REGISTER_FIFO_DATA, (byte) 0x26);
-                spiWrite(REGISTER_COMMAND, COMMAND_TRANSCEIVE);
-                spiWrite(REGISTER_BIT_FRAMING, (byte) 0x87);
+                writeRegister(REGISTER_FIFO_DATA, (byte) 0x26);
+                writeRegister(REGISTER_COMMAND, COMMAND_TRANSCEIVE);
+                writeRegister(REGISTER_BIT_FRAMING, (byte) 0x87);
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
