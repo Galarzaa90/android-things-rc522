@@ -3,11 +3,25 @@ An Android Things libray to control RFID readers based on the RC522 readers.
 
 Based on [pi-rc522](https://github.com/ondryaso/pi-rc522) by user **ondryaso**
 
-
 ## Connections
 The connections vary based on the [board](https://developer.android.com/things/hardware/developer-kits.html) used.
 
 **RST** and **IRQ** pins can be configured programatically.
+
+## Installing
+This library is available at Bintray. To install add this to your module's build.gradle
+```groovy
+repositories {
+    maven {
+        url 'http://dl.bintray.com/galarzaa90/maven/'
+    }
+}
+
+
+dependencies {
+    compile 'com.galarzaa.android-things:rc522:0.1.0'
+}
+```
 
 ## Usage
 _The use of interruptions hasn't been tested._
