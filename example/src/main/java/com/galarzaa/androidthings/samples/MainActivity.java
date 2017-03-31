@@ -32,10 +32,13 @@ public class MainActivity extends AppCompatActivity {
         mResultsDescription = (TextView)findViewById(R.id.results_description);
         mTag = (TextView)findViewById(R.id.tag);
         button = (Button)findViewById(R.id.button);
-        button.setOnClickListener(v -> {
-            mRfidTask = new RfidTask(mRrc522);
-            mRfidTask.execute();
-            ((Button)v).setText(R.string.reading);
+        button.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                mRfidTask = new RfidTask(mRrc522);
+                mRfidTask.execute();
+                ((Button)v).setText(R.string.reading);
+            }
         });
 
         PeripheralManagerService pioService = new PeripheralManagerService();

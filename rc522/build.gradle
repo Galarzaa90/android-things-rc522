@@ -16,7 +16,7 @@ ext {
     gitUrl = 'https://github.com/Galarzaa90/android-things-rc522.git'
     issuesUrl = 'https://github.com/Galarzaa90/android-things-rc522/issues'
 
-    libraryVersion = '0.1.0'
+    libraryVersion = versions.publishVersion
 
     developerId = 'galarzaa90'
     developerName = 'Allan Galarza'
@@ -47,7 +47,7 @@ android {
 }
 
 dependencies {
-    compile 'com.google.android.things:androidthings:'+versions.thingsLib
+    provided 'com.google.android.things:androidthings:'+versions.thingsLib
 }
 
 apply from: '../bintray.gradle'

@@ -11,9 +11,6 @@ android {
         targetSdkVersion versions.compileSdk
         versionCode versions.publishVersionCode
         versionName versions.publishVersion
-        jackOptions {
-            enabled true
-        }
     }
     buildTypes {
         release {
@@ -26,7 +23,7 @@ android {
 dependencies {
     compile project(':rc522')
     compile fileTree(include: ['*.jar'], dir: 'libs')
-    compile 'com.google.android.things:androidthings:'+versions.thingsLib
+    provided 'com.google.android.things:androidthings:'+versions.thingsLib
     compile 'com.android.support:appcompat-v7:25.3.1'
     compile 'com.android.support.constraint:constraint-layout:1.0.2'
 }
