@@ -19,7 +19,7 @@ repositories {
 
 
 dependencies {
-    compile 'com.galarzaa.android-things:rc522:0.1.0'
+    compile 'com.galarzaa.android-things:rc522:0.1.1'
 }
 ```
 
