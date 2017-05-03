@@ -1,4 +1,5 @@
-# Android Things RC522
+# Android Things RC522 [![Bintray](https://img.shields.io/bintray/v/galarzaa90/maven/android-things-rc522.svg)](https://bintray.com/galarzaa90/maven/android-things-rc522) [![license](https://img.shields.io/github/license/Galarzaa90/android-things-rc522.svg)]() [![Android Things](https://img.shields.io/badge/android--things-0.2--devpreview-red.svg)](https://developer.android.com/things/preview/releases.html#developer_preview_2)
+
 An Android Things libray to control RFID readers based on the RC522 readers.
 
 Based on [pi-rc522](https://github.com/ondryaso/pi-rc522) by user **ondryaso**
