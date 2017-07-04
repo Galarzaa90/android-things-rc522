@@ -20,7 +20,7 @@ repositories {
 
 
 dependencies {
-    compile 'com.galarzaa.android-things:rc522:0.1.1'
+    compile 'com.galarzaa.android-things:rc522:0.1.2'
 }
 ```
 
@@ -34,7 +34,7 @@ Unfortunately, in Android, the UI thread shouldn't be blocked, so the polling ha
 separate thread e.g. AsyncTask, Runnable, etc.
 
 To use the libary, a `SpiDevice` object must be passed in the constructor, along with a `Gpio` object for
-the RST pin and a `Gpio` object for the IRQ pin.
+the RST pin.
 
 ### Polling state
 ```java
