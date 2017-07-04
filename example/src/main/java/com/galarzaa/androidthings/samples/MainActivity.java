@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             SpiDevice spiDevice = pioService.openSpiDevice("SPI0.0");
             Gpio resetPin = pioService.openGpio("BCM25");
-            mRrc522 = new Rc522(this, spiDevice, resetPin);
+            mRrc522 = new Rc522(spiDevice, resetPin);
         } catch (IOException e) {
             e.printStackTrace();
         }

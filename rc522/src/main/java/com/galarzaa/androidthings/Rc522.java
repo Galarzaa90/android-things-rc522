@@ -1,10 +1,8 @@
 package com.galarzaa.androidthings;
 
 import android.content.Context;
-import android.os.Handler;
 
 import com.google.android.things.pio.Gpio;
-import com.google.android.things.pio.GpioCallback;
 import com.google.android.things.pio.SpiDevice;
 
 import java.io.IOException;
@@ -19,24 +17,14 @@ import java.io.IOException;
  */
 
 public class Rc522 {
-    private final Context context;
-    private final Handler handler;
-    private RfidListener listener;
-
     private SpiDevice device;
     private Gpio resetPin;
-    private Gpio irqPin;
     private int busSpeed = 1000000;
 
     private byte[] uuid;
 
     private byte[] backData;
     private int backLength;
-
-    private boolean irq = false;
-
-    private IrqRunnable irqRunnable = new IrqRunnable();
-    private Thread irqThread;
 
     private static final int MAX_LENGTH = 16;
 
@@ -66,66 +54,62 @@ public class Rc522 {
     private static final byte COMMAND_END = 0x50;
 
     /* Found in table 20, page 36 */
-    private static final byte REGISTER_COMMAND = 0x01;
-    private static final byte REGISTER_INTERRUPT_ENABLE = 0x02;
-    private static final byte REGISTER_COM_IRQ = 0x04;
-    private static final byte REGISTER_DIV_IRQ = 0x05;
-    private static final byte REGISTER_ERROR = 0x06;
-    private static final byte REGISTER_COMMUNICATION_STATUS = 0x07;
-    private static final byte REGISTER_RXTX_STATUS = 0x08;
-    private static final byte REGISTER_FIFO_DATA = 0x09;
-    private static final byte REGISTER_FIFO_LEVEL = 0x0A;
-    private static final byte REGISTER_CONTROL = 0x0C;
-    private static final byte REGISTER_CRC_RESULT_HIGH = 0x21;
-    private static final byte REGISTER_CRC_RESULT_LOW = 0x22;
-    private static final byte REGISTER_TIMER_MODE = 0x2A;
-    private static final byte REGISTER_TIMER_PRESCALER_MODE = 0x2B;
-    private static final byte REGISTER_TIMER_RELOAD_HIGH = 0x2C;
-    private static final byte REGISTER_TIMER_RELOAD_LOW = 0x2D;
-    private static final byte REGISTER_TX_CONTROL = 0x14;
-    private static final byte REGISTER_TX_MODE = 0x15;
-    private static final byte REGISTER_MODE = 0x11;
-    private static final byte REGISTER_BIT_FRAMING = 0x0D;
+    private static final byte REGISTER_COMMAND = 0x01; //CommandReg
+    private static final byte REGISTER_INTERRUPT_ENABLE = 0x02; //ComIEnReg
+    private static final byte REGISTER_COM_IRQ = 0x04; // DivIEnReg
+    private static final byte REGISTER_DIV_IRQ = 0x05; //ComIrqReg
+    private static final byte REGISTER_ERROR = 0x06; //ErrorReg
+    private static final byte REGISTER_COMMUNICATION_STATUS = 0x07; //Status1Reg
+    private static final byte REGISTER_RXTX_STATUS = 0x08; //Status2Reg
+    private static final byte REGISTER_FIFO_DATA = 0x09; //FIFODataReg
+    private static final byte REGISTER_FIFO_LEVEL = 0x0A; //FIFOLevelReg
+    private static final byte REGISTER_CONTROL = 0x0C; //ControlReg
+    private static final byte REGISTER_BIT_FRAMING = 0x0D; //BitFramingReg
+    private static final byte REGISTER_MODE = 0x11; //ModeReg
+    private static final byte REGISTER_TX_CONTROL = 0x14; //TxControlReg
+    private static final byte REGISTER_TX_MODE = 0x15; //TxASKReg
+    private static final byte REGISTER_CRC_RESULT_HIGH = 0x21; //CRCResultReg
+    private static final byte REGISTER_CRC_RESULT_LOW = 0x22; //CRCResultReg
+    private static final byte REGISTER_TIMER_MODE = 0x2A; //TModeReg
+    private static final byte REGISTER_TIMER_PRESCALER_MODE = 0x2B; //TPrescalerReg
+    private static final byte REGISTER_TIMER_RELOAD_HIGH = 0x2C; //TReloadReg
+    private static final byte REGISTER_TIMER_RELOAD_LOW = 0x2D; //TReloadReg
 
+    /**
+     * Initializes RC522 with the configured SPI port and pins.
+     * @param context Parameter no longer used, use {@link #Rc522(SpiDevice, Gpio)} instead.
+     * @param spiDevice SPI port used on the board
+     * @param resetPin Pin connected to the RST pin on the RC522
+     * @deprecated use use {@link #Rc522(SpiDevice, Gpio)} instead.
+     */
+    @Deprecated
     public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin) throws IOException {
-        this.context = context;
         this.device = spiDevice;
         this.resetPin = resetPin;
-        this.handler = new Handler(context.getMainLooper());
-        initializeDevice();
+        initializePeripherals();
     }
 
-    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin, int speed) throws IOException {
-        this.context = context;
+    /**
+     * Initializes RC522 with the configured SPI port and pins.
+     * @param spiDevice SPI port used on the board
+     * @param resetPin Pin connected to the RST pin on the RC522
+     */
+    public Rc522(SpiDevice spiDevice, Gpio resetPin) throws IOException {
         this.device = spiDevice;
         this.resetPin = resetPin;
-        this.handler = new Handler(context.getMainLooper());
-        this.busSpeed = speed;
-        initializeDevice();
+        initializePeripherals();
     }
 
-    public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin, Gpio irqPin, int speed) throws IOException {
-        this.context = context;
-        this.device = spiDevice;
-        this.resetPin = resetPin;
-        this.irqPin = irqPin;
-        this.handler = new Handler(context.getMainLooper());
-        this.busSpeed = speed;
+    private void initializePeripherals() throws IOException {
+        device.setFrequency(busSpeed);
+        resetPin.setDirection(Gpio.DIRECTION_OUT_INITIALLY_HIGH);
         initializeDevice();
     }
-
 
     /**
      * Performs the inital device setup and configure the pins used
      */
-    private void initializeDevice() throws IOException {
-        device.setFrequency(busSpeed);
-        resetPin.setDirection(Gpio.DIRECTION_OUT_INITIALLY_HIGH);
-        if(irqPin != null) {
-            irqPin.setDirection(Gpio.DIRECTION_IN);
-            irqPin.setEdgeTriggerType(Gpio.EDGE_FALLING);
-            irqPin.registerGpioCallback(new IrqCallback());
-        }
+    private void initializeDevice(){
         reset();
         writeRegister(REGISTER_TIMER_MODE, (byte) 0x8D);
         writeRegister(REGISTER_TIMER_PRESCALER_MODE, (byte) 0x3E);
@@ -134,7 +118,6 @@ public class Rc522 {
         writeRegister(REGISTER_TX_MODE, (byte) 0x40);
         writeRegister(REGISTER_MODE, (byte) 0x3D);
         setAntenna(true);
-
     }
 
     public byte[] getUuid(){
@@ -417,62 +400,5 @@ public class Rc522 {
             }
         }
         return success;
-    }
-
-
-    public void setListener(RfidListener listener) throws IOException {
-        this.listener = listener;
-        initializeDevice();
-        irqRunnable.terminate();
-        writeRegister(REGISTER_COM_IRQ, (byte) 0x00);
-        writeRegister(REGISTER_INTERRUPT_ENABLE, (byte) 0xA0);
-        irqThread = new Thread();
-        irqThread.run();
-    }
-
-
-    private class IrqCallback extends GpioCallback {
-
-        @Override
-        public boolean onGpioEdge(Gpio gpio){
-            irq = true;
-            return true;
-        }
-    }
-
-
-    private class IrqRunnable implements Runnable{
-        private volatile boolean running = true;
-
-        void terminate(){
-            running = false;
-        }
-        @Override
-        public void run() {
-            while(running && !irq){
-                writeRegister(REGISTER_FIFO_DATA, (byte) 0x26);
-                writeRegister(REGISTER_COMMAND, COMMAND_TRANSCEIVE);
-                writeRegister(REGISTER_BIT_FRAMING, (byte) 0x87);
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                if(irq){
-                    handler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            if(listener != null){
-                                listener.onRfidDetected();
-                            }
-                        }
-                    });
-                }
-            }
-        }
-    }
-
-    public interface RfidListener {
-        void onRfidDetected();
     }
 }
