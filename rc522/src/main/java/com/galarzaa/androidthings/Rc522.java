@@ -21,12 +21,12 @@ public class Rc522 {
     private Gpio resetPin;
     private int busSpeed = 1000000;
 
-    private byte[] uuid;
+    private byte[] uid;
 
     private byte[] backData;
     private int backLength;
 
-    private static final int MAX_LENGTH = 16;
+    private static final byte MAX_LENGTH = 16;
 
     /* Found in Table 149, page 70*/
     private static final byte COMMAND_IDLE = 0x00;
@@ -37,8 +37,8 @@ public class Rc522 {
     private static final byte COMMAND_MF_AUTHENT = 0x0E;
     private static final byte COMMAND_SOFT_RESET = 0x0F;
 
-    private static final byte AUTH_A = 0x60;
-    private static final byte AUTH_B = 0x61;
+    public static final byte AUTH_A = 0x60;
+    public static final byte AUTH_B = 0x61;
 
     private static final byte COMMAND_READ = 0x30;
     private static final byte COMMAND_WRITE = (byte) 0xA0;
@@ -74,13 +74,14 @@ public class Rc522 {
     private static final byte REGISTER_TIMER_PRESCALER_MODE = 0x2B; //TPrescalerReg
     private static final byte REGISTER_TIMER_RELOAD_HIGH = 0x2C; //TReloadReg
     private static final byte REGISTER_TIMER_RELOAD_LOW = 0x2D; //TReloadReg
+    private boolean authenticated;
 
     /**
      * Initializes RC522 with the configured SPI port and pins.
      * @param context Parameter no longer used, use {@link #Rc522(SpiDevice, Gpio)} instead.
      * @param spiDevice SPI port used on the board
      * @param resetPin Pin connected to the RST pin on the RC522
-     * @deprecated use use {@link #Rc522(SpiDevice, Gpio)} instead.
+     * @deprecated use {@link #Rc522(SpiDevice, Gpio)} instead.
      */
     @Deprecated
     public Rc522(Context context, SpiDevice spiDevice, Gpio resetPin) throws IOException {
@@ -100,6 +101,10 @@ public class Rc522 {
         initializePeripherals();
     }
 
+    /**
+     *  Performs the initial configuration on hardware ports
+     * @throws IOException if the hardware board had a problem with its hardware ports
+     */
     private void initializePeripherals() throws IOException {
         device.setFrequency(busSpeed);
         resetPin.setDirection(Gpio.DIRECTION_OUT_INITIALLY_HIGH);
@@ -120,14 +125,35 @@ public class Rc522 {
         setAntenna(true);
     }
 
-    public byte[] getUuid(){
-        return uuid;
+    /**
+     * Gets the UID of the last card that was successfully read. This may be empty if no hard has
+     * been read before.
+     * @return A byte array containing the card's UID.
+     */
+    public byte[] getUid(){
+        return uid;
     }
 
+    /**
+     * @deprecated Method renamed, use {@link #getUid()} instead
+     */
+    @Deprecated
+    public byte[] getUuid(){
+        return getUid();
+    }
+
+    /**
+     * Performs a soft reset on the Rc522
+     */
     private void reset(){
         writeRegister(REGISTER_COMMAND, COMMAND_SOFT_RESET);
     }
 
+    /**
+     * Writes to a RC522 register
+     * @param address The address to write to
+     * @param value The value that will be written
+     */
     private void writeRegister(byte address, byte value){
         byte buffer[] = {(byte) (((address << 1) & 0x7E)), value};
         byte response[] = new byte[buffer.length];
@@ -138,6 +164,11 @@ public class Rc522 {
         }
     }
 
+    /**
+     * Reads the current value on the RC522's register
+     * @param address The address to read from
+     * @return the byte value currently stored in the register
+     */
     private byte readRegister(byte address){
         byte buffer[] = {(byte) (((address << 1) & 0x7E) | 0x80), 0};
         byte response[] = new byte[buffer.length];
@@ -150,6 +181,10 @@ public class Rc522 {
         }
     }
 
+    /**
+     * Disables or enables the RC522's antenna
+     * @param enabled State to set the antenna to
+     */
     private void setAntenna(boolean enabled){
         if(enabled){
             byte currentState = readRegister(REGISTER_TX_CONTROL);
@@ -161,11 +196,23 @@ public class Rc522 {
         }
     }
 
+    /**
+     * Sets the bits of a register according to a bit mask
+     * This allows turning on only specific bytes of a register without altering the rest
+     * @param address The register's address
+     * @param mask The mask to apply
+     */
     private void setBitMask(byte address, byte mask){
         byte value = readRegister(address);
         writeRegister(address, (byte) (value | mask));
     }
 
+    /**
+     * Clears the bits of a register according to a bit mask
+     * This allows turning off only specific bytes of a register without altering the rest
+     * @param address The register's address
+     * @param mask The mask to apply
+     */
     private void clearBitMask(byte address, byte mask){
         byte value = readRegister(address);
         writeRegister(address, (byte) (value & (~mask)));
@@ -204,16 +251,13 @@ public class Rc522 {
         while(true){
             n = readRegister(REGISTER_COM_IRQ);
             i--;
-            if ((i == 0) || (n & 0x01) > 0 || (n & irqWait) > 0){
+            if(!((i != 0) && !((n & 0x01) > 0) && !((n & irqWait) > 0)))
                 break;
-            }
         }
         clearBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
 
         if(i != 0){
             if((readRegister(REGISTER_ERROR) & 0x1B) == 0x00){
-                success = true;
-
                 if ((n & irq & 0x01) > 0) {
                     success = false;
                 }
@@ -232,7 +276,7 @@ public class Rc522 {
                     }
 
                     if( n > MAX_LENGTH){
-                        n = (byte) MAX_LENGTH;
+                        n = MAX_LENGTH;
                     }
 
                     for(i = 0; i < n; i++){
@@ -240,7 +284,7 @@ public class Rc522 {
                     }
                 }
             }else {
-                success = false;
+                return false;
             }
         }
         return success;
@@ -264,14 +308,16 @@ public class Rc522 {
 
     }
 
+    /**
+     * Checks for collision errors
+     * @return true if there are no collision errors
+     */
     public boolean antiCollisionDetect(){
-        byte[] serial_number = new byte[2];
         int serial_number_check = 0;
         int i;
 
         writeRegister(REGISTER_BIT_FRAMING, (byte) 0x00);
-        serial_number[0] = COMMAND_ANTICOLLISION;
-        serial_number[1] = 0x20;
+        byte[] serial_number = new byte[]{COMMAND_ANTICOLLISION, 0x20};
 
         boolean success = writeCard(COMMAND_TRANSCEIVE,serial_number);
         if(success){
@@ -283,15 +329,15 @@ public class Rc522 {
                     return false;
                 }
             }
-            uuid = backData;
+            uid = backData;
         }
         return success;
     }
 
     private byte[] calculateCrc(byte[] data){
-        byte[] returnData = new byte[2];
         clearBitMask(REGISTER_DIV_IRQ, (byte) 0x04);
         setBitMask(REGISTER_FIFO_LEVEL, (byte) 0x80);
+
         for(int i = 0;i < data.length-2; i++){
             writeRegister(REGISTER_FIFO_DATA, data[i]);
         }
@@ -305,59 +351,87 @@ public class Rc522 {
                 break;
             }
         }
-        returnData[0] = readRegister(REGISTER_CRC_RESULT_LOW);
-        returnData[1] = readRegister(REGISTER_CRC_RESULT_HIGH);
-        return returnData;
+        return new byte[]{readRegister(REGISTER_CRC_RESULT_LOW),readRegister(REGISTER_CRC_RESULT_HIGH)};
     }
 
+    /**
+     * Selects the tag to be used in following operations
+     * @param uid Byte array containing the tag's uid
+     * @return true if no errors occured
+     */
     public boolean selectTag(byte[] uid){
         boolean success;
-        byte data[]=new byte[9];
+        byte data[]=  new byte[9];
         int i,j;
 
         data[0]=COMMAND_SELECT;
         data[1]=0x70;
 
-        for(i=0,j=2;i<5;i++,j++)
+        for(i=0, j=2 ; i<5 ;i++, j++)
             data[j]=uid[i];
 
         byte[] crc = calculateCrc(data);
         data[7] = crc[0];
         data[8] = crc[1];
 
-        success=writeCard(COMMAND_TRANSCEIVE, data);
-        if (success && backLength == 0x18){
-            return true;
-        }
-        else{
-            return false;
-        }
+        success = writeCard(COMMAND_TRANSCEIVE, data);
+        return success && backLength == 0x18;
     }
 
-    public boolean authenticateCard(byte authMode,byte blockAddress,byte []key,byte []uid){
-        byte data[]=new byte[12];
-        int i,j;
+    /**
+     * Authenticates the use of a specific address. The tag must be selected before.
+     * @param authMode The authentication mode, {@link #AUTH_A} or {@link #AUTH_B}
+     * @param blockAddress The byte address of the block to authenticate for
+     * @param key A six byte array containing the key used to authenticate
+     * @return true if authentication was successful
+     */
+    public boolean authenticateCard(byte authMode,byte blockAddress,byte[] key) {
+        byte data[] = new byte[12];
+        int i, j;
 
-        data[0]=authMode;
-        data[1]=blockAddress;
-        for(i=0,j=2;i<6;i++,j++)
-            data[j]=key[i];
-        for(i=0,j=8;i<4;i++,j++)
-            data[j]=uid[i];
+        data[0] = authMode;
+        data[1] = blockAddress;
+        for (i = 0, j = 2; i < 6; i++, j++)
+            data[j] = key[i];
+        for (i = 0, j = 8; i < 4; i++, j++)
+            data[j] = uid[i];
 
         boolean success = writeCard(COMMAND_MF_AUTHENT, data);
         if((readRegister(REGISTER_RXTX_STATUS) & 0x08) == 0){
-            success = false;
+            return false;
+        }
+        if(success){
+            this.authenticated = true;
         }
         return success;
     }
 
-    public void stopCrypto(){
-        clearBitMask(REGISTER_RXTX_STATUS, (byte) 0x08);
+    /**
+     * @deprecated use {@link #authenticateCard(byte, byte, byte[])}
+     */
+    @Deprecated
+    public boolean authenticateCard(byte authMode,byte blockAddress,byte[] key, byte[] uid) {
+        this.uid = uid;
+        return authenticateCard(authMode, blockAddress, key);
     }
 
-    public boolean readBlock(byte blockAddress)
-    {
+
+    /**
+     * Ends operations that use crypto and cleans up
+     */
+    public void stopCrypto(){
+        clearBitMask(REGISTER_RXTX_STATUS, (byte) 0x08);
+        this.authenticated = false;
+    }
+
+    /**
+     * Reads the current data stored in the tag's block.
+     * Authentication is required
+     * @param blockAddress the block to read data from
+     * @param buffer the byte array to store the read data to. Length must be 16
+     * @return true if reading was successful
+     */
+    public boolean readBlock(byte blockAddress, byte[] buffer){
         byte data[]=new byte[4];
         data[0]=COMMAND_READ;
         data[1]=blockAddress;
@@ -365,40 +439,87 @@ public class Rc522 {
         data[2] = crc[0];
         data[3] = crc[1];
         boolean success = writeCard(COMMAND_TRANSCEIVE, data);
-        if(backData.length != 16){
-            success = false;
+        if(!success){
+            return false;
         }
-        return success;
+        if(backData.length != 16){
+            return false;
+        }
+        System.arraycopy(backData, 0, buffer, 0, backData.length);
+        return true;
     }
 
-    public boolean write(byte blockAddress, byte[]data)
-    {
-        byte buff[]=new byte[4];
-        buff[0]=COMMAND_WRITE;
-        buff[1]=blockAddress;
+    /**
+     * @deprecated Use {@link #readBlock(byte, byte[])} as it can report read status
+     * @param blockAddress the byte address of the block to read from
+     * @return 16 bytes array of the current value in that block
+     */
+    @Deprecated
+    public byte[] readBlock(byte blockAddress){
+        byte value[] = new byte[16];
+        readBlock(blockAddress,value);
+        return value;
+    }
+
+    /**
+     * Writes data to a block in the tag
+     * Authentication is required
+     * @param blockAddress the byte address of the block to write to
+     * @param data 16 byte array with the data that wants to be written
+     * @return true if writing was successful
+     */
+    public boolean writeBlock(byte blockAddress, byte[] data) {
+        byte buff[] = new byte[4];
+        buff[0] = COMMAND_WRITE;
+        buff[1] = blockAddress;
         byte[] crc = calculateCrc(buff);
         buff[2] = crc[0];
         buff[3] = crc[1];
 
         boolean success = writeCard(COMMAND_TRANSCEIVE, buff);
-        if(!success || backLength != 4 || (backData[0] & 0x0F) != 0x0A){
-            success = false;
+        if (!success) {
+            return false;
+        }
+        if (backLength != 4 || (backData[0] & 0x0F) != 0x0A) {
+            return false;
         }
 
-        if(success){
-            byte buffWrite[]=new byte[data.length+2];
-            for (int i=0;i<data.length;i++) {
-                buffWrite[i] = data[i];
-            }
-            crc = calculateCrc(buffWrite);
-            buffWrite[data.length-2] = crc[0];
-            buffWrite[data.length-1] = crc[1];
-            success = writeCard(COMMAND_TRANSCEIVE, buffWrite);
-
-            if(backLength !=4 || (backData[0] & 0x0F) != 0x0A){
-                success = false;
-            }
+        byte buffWrite[] = new byte[data.length + 2];
+        System.arraycopy(data, 0, buffWrite, 0, data.length);
+        crc = calculateCrc(buffWrite);
+        buffWrite[buffWrite.length - 2] = crc[0];
+        buffWrite[buffWrite.length - 1] = crc[1];
+        success = writeCard(COMMAND_TRANSCEIVE, buffWrite);
+        if(!success) {
+            return false;
         }
-        return success;
+        return !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
+    }
+
+    /**
+     * @see #writeBlock(byte, byte[])
+     * @deprecated use {@link #writeBlock(byte, byte[])}
+     */
+    @Deprecated
+    public boolean write(byte blockAddress, byte[] data){
+        return writeBlock(blockAddress, data);
+    }
+
+    /**
+     * MIFARE tags blocks are organized in sectors, this calculates the address of a block in a
+     * specific sector
+     * @param sector the sector number
+     * @param block the sector's block
+     * @return the block's absolute address
+     */
+    public static byte getBlockAddress(byte sector, byte block){
+        return (byte) (sector * 4 + block);
+    }
+
+    /**
+     * @see #getBlockAddress(byte, byte)
+     */
+    public static byte getBlockAddress(int sector, int block){
+        return getBlockAddress((byte)sector, (byte)block);
     }
 }

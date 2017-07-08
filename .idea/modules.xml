@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/ThingsRC522.iml" filepath="$PROJECT_DIR$/ThingsRC522.iml" />
       <module fileurl="file://$PROJECT_DIR$/android-things-rc522.iml" filepath="$PROJECT_DIR$/android-things-rc522.iml" />
       <module fileurl="file://$PROJECT_DIR$/example/example.iml" filepath="$PROJECT_DIR$/example/example.iml" />
       <module fileurl="file://$PROJECT_DIR$/rc522/rc522.iml" filepath="$PROJECT_DIR$/rc522/rc522.iml" />

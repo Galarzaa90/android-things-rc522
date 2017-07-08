@@ -10,17 +10,12 @@ The connections vary based on the [board](https://developer.android.com/things/h
 **RST** pin is configured programatically.
 
 ## Installing
-This library is available at Bintray. To install add this to your module's build.gradle
+This library is available at jCenter. To install add this to your module's build.gradle
 ```groovy
-repositories {
-    maven {
-        url 'http://dl.bintray.com/galarzaa90/maven/'
-    }
-}
 
 
 dependencies {
-    compile 'com.galarzaa.android-things:rc522:0.1.2'
+    compile 'com.galarzaa.android-things:rc522:0.2.0'
 }
 ```
 
@@ -60,7 +55,7 @@ public class MainActivty extends AppCompatActivity{
             if(success){
                 success = rc522.antiCollisionDetect();
                 if(success){
-                    byte[] uuid = rc522.getUiid();
+                    byte[] uuid = rc522.getUid();
                     /* Perform any operations here */
                     break;
                 }
