@@ -522,4 +522,35 @@ public class Rc522 {
     public static byte getBlockAddress(int sector, int block){
         return getBlockAddress((byte)sector, (byte)block);
     }
+
+    /**
+     * Returns a string representation of the last read tag's UID
+     * @param separator The character that separates each element of the uid
+     * @return A string representing the tag's UID
+     */
+    public String getUidString(String separator){
+        if(this.uid == null){
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        String prefix = "";
+        for(byte b : this.uid){
+            int ubyte = b&0xff;
+            if(ubyte == 0){
+                break;
+            }
+            sb.append(prefix);
+            prefix = separator;
+            sb.append(ubyte);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * @see #getUidString(), uses "-" as a separator by default
+     */
+    public String getUidString(){
+        return getUidString("-");
+    }
+
 }
