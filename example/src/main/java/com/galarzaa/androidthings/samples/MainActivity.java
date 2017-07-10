@@ -3,7 +3,6 @@ package com.galarzaa.androidthings.samples;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -15,13 +14,13 @@ import com.google.android.things.pio.PeripheralManagerService;
 import com.google.android.things.pio.SpiDevice;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
     private Rc522 mRrc522;
     RfidTask mRfidTask;
-    private TextView mTag;
-    private TextView mResultsDescription;
+    private TextView mTagDetectedView;
+    private TextView mTagUidView;
+    private TextView mTagResultsView;
     private Button button;
 
     private SpiDevice spiDevice;
@@ -30,13 +29,16 @@ public class MainActivity extends AppCompatActivity {
     private static final String SPI_PORT = "SPI0.0";
     private static final String PIN_RESET = "BCM25";
 
+    String resultsText = "";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mResultsDescription = (TextView)findViewById(R.id.results_description);
-        mTag = (TextView)findViewById(R.id.tag);
+        mTagDetectedView = (TextView)findViewById(R.id.tag_read);
+        mTagUidView = (TextView)findViewById(R.id.tag_uid);
+        mTagResultsView = (TextView) findViewById(R.id.tag_results);
         button = (Button)findViewById(R.id.button);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -72,7 +74,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private class RfidTask extends AsyncTask<Object, Object, byte[]> {
+    private class RfidTask extends AsyncTask<Object, Object, Boolean> {
         private static final String TAG = "RfidTask";
         private Rc522 rc522;
 
@@ -83,10 +85,15 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onPreExecute() {
             button.setEnabled(false);
+            mTagResultsView.setVisibility(View.GONE);
+            mTagDetectedView.setVisibility(View.GONE);
+            mTagUidView.setVisibility(View.GONE);
+            resultsText = "";
         }
 
         @Override
-        protected byte[] doInBackground(Object... params) {
+        protected Boolean doInBackground(Object... params) {
+            rc522.stopCrypto();
             while(true){
                 try {
                     Thread.sleep(50);
@@ -103,55 +110,55 @@ public class MainActivity extends AppCompatActivity {
                     continue;
                 }
                 byte[] uuid = rc522.getUid();
-                rc522.selectTag(uuid);
-                //We're trying to read block 1 in sector 2
-                byte block = Rc522.getBlockAddress(2,1);
-                //Mifare cards default key, this won't work if the key for the tag has been previously changed
-                byte[] key = {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF};
-                //Data that will be written to block 1, sector 2
-                byte[] newData = {0x0F,0x0E,0x0D,0x0C,0x0B,0x0A,0x09,0x08,0x07,0x06,0x05,0x04,0x03,0x02,0x01};
-                boolean authResult = rc522.authenticateCard(Rc522.AUTH_A, block, key);
-                if(authResult){
-                    if(rc522.writeBlock(block,newData)) {
-                        Log.i(TAG, "Data written successfully.");
-                    }else{
-                        Log.w(TAG, "Could not write to tag");
-                    }
-                    //Byte buffer to hold data
-                    byte[] buff = new byte[16];
-                    if(rc522.readBlock(block,buff)) {
-                        Log.i(TAG, "Data read: " + Arrays.toString(buff));
-                    }else{
-                        Log.w(TAG, "Could not read data from tag");
-                    }
-                    rc522.stopCrypto();
-                }else{
-                    Log.e(TAG,"Could not authenticate tag.");
-                }
-                return uuid;
+                return rc522.selectTag(uuid);
             }
         }
 
         @Override
-        protected void onPostExecute(byte[] result) {
-            StringBuilder sb = new StringBuilder();
-            String prefix = "";
-            Log.i("RfidTask",Arrays.toString(result));
-            for(byte b : result){
-                int ubyte = b&0xff;
-                if(ubyte == 0){
-                    break;
-                }
-                sb.append(prefix);
-                prefix = "-";
-                sb.append(ubyte);
-
+        protected void onPostExecute(Boolean success) {
+            if(!success){
+                mTagResultsView.setText(R.string.unknown_error);
+                return;
             }
-            button.setEnabled(true);
-            button.setText(R.string.start);
-            mTag.setText(sb.toString());
-            mResultsDescription.setVisibility(View.VISIBLE);
-            mTag.setVisibility(View.VISIBLE);
+            // Try to avoid doing any non RC522 operations until you're done communicating with it.
+            byte block = Rc522.getBlockAddress(2,1);
+            // Mifare's card default key A and key B, the key may have been changed previously
+            byte[] key = {(byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF};
+            // Each sector holds 16 bytes
+            // Data that will be written to sector 2, block 1
+            byte[] newData = {0x0F,0x0E,0x0D,0x0C,0x0B,0x0A,0x09,0x08,0x07,0x06,0x05,0x04,0x03,0x02,0x01,0x00};
+            // In this case, Rc522.AUTH_A or Rc522.AUTH_B can be used
+            try {
+                //We need to authenticate the card, each sector can have a different key
+                boolean result = rc522.authenticateCard(Rc522.AUTH_A, block, key);
+                if (!result) {
+                    mTagResultsView.setText(R.string.authetication_error);
+                    return;
+                }
+                result = rc522.writeBlock(block, newData);
+                if(!result){
+                    mTagResultsView.setText(R.string.write_error);
+                    return;
+                }
+                resultsText += "Sector written successfully";
+                byte[] buffer = new byte[16];
+                //Since we're still using the same block, we don't need to authenticate again
+                result = rc522.readBlock(block, buffer);
+                if(!result){
+                    mTagResultsView.setText(R.string.read_error);
+                    return;
+                }
+                resultsText += "\nSector read successfully: "+ Rc522.dataToHexString(buffer);
+                rc522.stopCrypto();
+                mTagResultsView.setText(resultsText);
+            }finally{
+                button.setEnabled(true);
+                button.setText(R.string.start);
+                mTagUidView.setText(getString(R.string.tag_uid,rc522.getUidString()));
+                mTagResultsView.setVisibility(View.VISIBLE);
+                mTagDetectedView.setVisibility(View.VISIBLE);
+                mTagUidView.setVisibility(View.VISIBLE);
+            }
         }
     }
 }

@@ -3,4 +3,9 @@
     <string name="start">Start</string>
     <string name="reading">Reading</string>
     <string name="tag_detected">Tag detected:</string>
+    <string name="tag_uid">UID: %1$s</string>
+    <string name="authetication_error">Couldn\'t authenticate for sector.</string>
+    <string name="unknown_error">Uknown error.</string>
+    <string name="write_error">Could not write to sector.</string>
+    <string name="read_error">Could not read block.</string>
 </resources>

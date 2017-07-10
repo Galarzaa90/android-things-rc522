@@ -553,4 +553,21 @@ public class Rc522 {
         return getUidString("-");
     }
 
+    private final static char[] HEX_CHARS = "0123456789ABCDEF".toCharArray();
+
+    /**
+     * Converts a data byte array to a string representing its 16 bytes in hexadecimal
+     * @param data the byte array holding the data
+     * @return A string representing the block's data
+     */
+    static public String dataToHexString(byte[] data){
+        char[] buffer = new char[32];
+        for(int i = 0; i < data.length; i++){
+            int b = data[i] & 0xFF;
+            buffer[i*2] = HEX_CHARS[b >>> 4];
+            buffer[i*2+1] = HEX_CHARS[b & 0x0F];
+        }
+        return new String(buffer);
+    }
+
 }
