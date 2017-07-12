@@ -112,5 +112,6 @@ This library is still in development, suggestions, improvements and fixes are we
 submit a **pull request**
 
 ## Resources
+* [This library's javadoc](https://galarzaa90.github.io/android-things-rc522/com/galarzaa/androidthings/Rc522.html#constructor.detail)
 * [MFRC522 product data sheet, pdf, 95 pages](http://www.nxp.com/docs/en/data-sheet/MFRC522.pdf)
 * [MIFARE Classic EV1 1K tags data product data sheet, pdf, 20 pages](http://www.nxp.com/docs/en/data-sheet/MFRC522.pdf)
