@@ -1,6 +1,7 @@
 package com.galarzaa.androidthings;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.google.android.things.pio.Gpio;
 import com.google.android.things.pio.SpiDevice;
@@ -39,7 +40,13 @@ public class Rc522 {
     private static final byte COMMAND_MF_AUTHENT = 0x0E;
     private static final byte COMMAND_SOFT_RESET = 0x0F;
 
+    /**
+     * Authentication using Key A
+     */
     public static final byte AUTH_A = 0x60;
+    /**
+     * Authentication using Key B
+     */
     public static final byte AUTH_B = 0x61;
 
     private static final byte COMMAND_READ = 0x30;
@@ -137,6 +144,8 @@ public class Rc522 {
     }
 
     /**
+     * Gets the UID of the last card that was successfully read. This may be empty if no hard has
+     * been read before.
      * @deprecated Method renamed, use {@link #getUid()} instead
      */
     @Deprecated
@@ -418,6 +427,7 @@ public class Rc522 {
     }
 
     /**
+     * Authenticates the use of a specific address. The tag must be selected before.
      * @deprecated use {@link #authenticateCard(byte, byte, byte[])}
      */
     @Deprecated
@@ -453,6 +463,7 @@ public class Rc522 {
         if(!success){
             return false;
         }
+        //TODO: Always true because backData is initialized with 16 length, this has to be replaced with an ArrayList or keep track of length separately
         if(backData.length != 16){
             return false;
         }
@@ -461,6 +472,8 @@ public class Rc522 {
     }
 
     /**
+     * Reads the current data stored in the tag's block.
+     * Authentication is required
      * @deprecated Use {@link #readBlock(byte, byte[])} as it can report read status
      * @param blockAddress the byte address of the block to read from
      * @return 16 bytes array of the current value in that block
@@ -572,11 +585,12 @@ public class Rc522 {
      * @return A string representing the block's data
      */
     public static String dataToHexString(byte[] data){
-        char[] buffer = new char[32];
+        char[] buffer = new char[data.length*3];
         for(int i = 0; i < data.length; i++){
             int b = data[i] & 0xFF;
-            buffer[i*2] = HEX_CHARS[b >>> 4];
-            buffer[i*2+1] = HEX_CHARS[b & 0x0F];
+            buffer[i*3] = HEX_CHARS[b >>> 4];
+            buffer[i*3+1] = HEX_CHARS[b & 0x0F];
+            buffer[i*3+2] = ' ';
         }
         return new String(buffer);
     }
@@ -595,8 +609,12 @@ public class Rc522 {
                 sb.append("S").append(i).append("B").append(j).append(": ");
                 byte block = getBlockAddress(i,j);
                 byte[] buffer = new byte[16];
-                authenticateCard(AUTH_A,block,key);
-                boolean success = readBlock(block,buffer);
+                boolean success = authenticateCard(AUTH_A,block,key);
+                if(!success){
+                    sb.append("Could not authenticate\n");
+                    continue;
+                }
+                success = readBlock(block,buffer);
                 if(!success){
                     sb.append("Could not read");
                 }else{
@@ -611,7 +629,7 @@ public class Rc522 {
     /***
      * Calculates the access bits for a sector trailer (bytes 6 to 7) based on Table 6 and Table 7
      * on MIFARE 1k's reference
-     * @see <a href="http://www.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf#page=12">Reference sheet</a>
+     * @see <a href="http://www.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf#page=12" target="blank">Reference sheet</a>
      * @param c1 byte array for the c1 values for block 0, 1, 2 and 3 respectively
      * @param c2 byte array for the c2 values for block 0, 1, 2 and 3 respectively
      * @param c3 byte array for the c3 values for block 0, 1, 2 and 3 respectively
@@ -673,5 +691,32 @@ public class Rc522 {
         }catch(IndexOutOfBoundsException e){
             return null;
         }
+    }
+
+    /**
+     * Writes a sector's trailer
+     * This block contains the access configuration for the entire sector, caution must be taken when
+     * modifying its contents as it can lead to inaccessible sectors. Please refer to the tag's documentation
+     * Tag must be selected and sector authenticated first
+     * @see <a href="http://www.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf#page=12" target="blank">Reference sheet</a>
+     * @param sector the sector's number
+     * @param keyA the new key A that will be set
+     * @param accessBits the access bits that will be set. Can be obtained with {@link #calculateAccessBits(byte[], byte[], byte[])}
+     * @param userData a single byte containing user data
+     * @param keyB the new key B that will be set
+     * @return true if writing was successful, false otherwise or if parameters are invalid
+     */
+    public boolean writeTrailer(byte sector, byte[] keyA, byte[] accessBits, byte userData, byte[] keyB){
+        byte address = getBlockAddress(sector, 3);
+        if(keyA.length != 6 || keyB.length != 6 || accessBits.length != 3){
+            Log.d("writeTrailer","incorrect lengths");
+            return false;
+        }
+        byte[] trailer = new byte[16];
+        System.arraycopy(keyA, 0, trailer, 0, 6);
+        System.arraycopy(accessBits, 0, trailer, 6, 3);
+        trailer[9] = userData;
+        System.arraycopy(keyB, 0, trailer, 10, 6);
+        return writeBlock(address, trailer);
     }
 }
