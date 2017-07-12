@@ -8,11 +8,13 @@ import com.google.android.things.pio.SpiDevice;
 import java.io.IOException;
 
 /**
- * Based on pi-rc22 by ondryaso
- * https://github.com/ondryaso/pi-rc522/
+ * Library to interact with the RFID-RC522 module
+ * <br>
+ * Based on <a href="https://github.com/ondryaso/pi-rc522/" target="blank">pi-rc22 by ondryaso</a>
  *
  *
- * @see <a href="https://www.nxp.com/documents/data_sheet/MFRC522.pdf">MFRC522 Reference</a>
+ *
+ * @see <a href="https://www.nxp.com/documents/data_sheet/MFRC522.pdf" target="blank">MFRC522 Reference</a>
  * @author Allan Galarza
  */
 
@@ -290,10 +292,19 @@ public class Rc522 {
         return success;
     }
 
+    /**
+     * Requests for a tag
+     * @return true if a tag is present
+     */
     public boolean request(){
         return this.request(COMMAND_REQUIRE_ID);
     }
 
+    /**
+     * Requests for a tag
+     * @param requestMode the type of request being made
+     * @return true if a tag is present
+     */
     public boolean request(byte requestMode){
         byte tagType[]=new byte[]{requestMode};
 
