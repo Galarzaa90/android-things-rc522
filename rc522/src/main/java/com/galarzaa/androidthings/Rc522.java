@@ -27,6 +27,7 @@ public class Rc522 {
     private byte[] uid;
 
     private byte[] backData;
+    private int backDataLength;
     private int backLength;
 
     private static final byte MAX_LENGTH = 16;
@@ -292,6 +293,7 @@ public class Rc522 {
 
                     for(i = 0; i < n; i++){
                         backData[i] = readRegister(REGISTER_FIFO_DATA);
+                        backDataLength = i+1;
                     }
                 }
             }else {
@@ -341,7 +343,7 @@ public class Rc522 {
 
         boolean success = writeCard(COMMAND_TRANSCEIVE,serial_number);
         if(success){
-            if(backData.length == 5){
+            if(backDataLength == 5){
                 for(i=0; i < 4; i++){
                     serial_number_check ^= backData[i];
                 }
@@ -406,6 +408,7 @@ public class Rc522 {
      * @return true if authentication was successful
      */
     public boolean authenticateCard(byte authMode,byte blockAddress,byte[] key) {
+        //For reference, see section 10.3.1.9 MFAuthent in MFRC522's datasheet
         byte data[] = new byte[12];
         int i, j;
 
@@ -463,11 +466,11 @@ public class Rc522 {
         if(!success){
             return false;
         }
-        //TODO: Always true because backData is initialized with 16 length, this has to be replaced with an ArrayList or keep track of length separately
-        if(backData.length != 16){
+        System.out.println(backDataLength);
+        if(backDataLength != 16){
             return false;
         }
-        System.arraycopy(backData, 0, buffer, 0, backData.length);
+        System.arraycopy(backData, 0, buffer, 0, 16);
         return true;
     }
 
