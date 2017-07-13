@@ -466,7 +466,6 @@ public class Rc522 {
         if(!success){
             return false;
         }
-        System.out.println(backDataLength);
         if(backDataLength != 16){
             return false;
         }
