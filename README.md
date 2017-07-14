@@ -22,11 +22,8 @@ The connections vary based on the [board](https://developer.android.com/things/h
 ## Installing
 This library is available at jCenter. To install add this to your module's build.gradle
 ```groovy
-
-
 dependencies {
-    compile 'com.galarzaa.android-things:rc522:0.2.1'
-}
+    compile 'com.galarzaa.android-things:rc522:0.2.2'
 ```
 
 ## Usage
