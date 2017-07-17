@@ -1,6 +1,7 @@
 package com.galarzaa.androidthings;
 
 import android.content.Context;
+import android.support.annotation.Nullable;
 import android.util.Log;
 
 import com.google.android.things.pio.Gpio;
@@ -55,7 +56,7 @@ public class Rc522 {
     private static final byte COMMAND_INCREMENT = (byte) 0xC1;
     private static final byte COMMAND_DECREMENT = (byte) 0xC0;
     private static final byte COMMAND_RESTORE = (byte) 0xC2;
-    private static final byte COMMAND_TANSFER = (byte) 0xb0;
+    private static final byte COMMAND_TRANSFER = (byte) 0xb0;
 
     private static final byte COMMAND_REQUIRE_ID = 0x26;
     private static final byte COMMAND_REQUIRE_ALL = 0x52;
@@ -155,6 +156,36 @@ public class Rc522 {
     }
 
     /**
+     * Returns a string representation of the last read tag's UID
+     * @param separator The character that separates each element of the uid
+     * @return A string representing the tag's UID
+     */
+    public String getUidString(String separator){
+        if(this.uid == null){
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        String prefix = "";
+        for(byte b : this.uid){
+            int ubyte = b&0xff;
+            if(ubyte == 0){
+                break;
+            }
+            sb.append(prefix);
+            prefix = separator;
+            sb.append(ubyte);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * @see #getUidString(), uses "-" as a separator by default
+     */
+    public String getUidString(){
+        return getUidString("-");
+    }
+
+    /**
      * Performs a soft reset on the Rc522
      */
     private void reset(){
@@ -230,13 +261,20 @@ public class Rc522 {
         writeRegister(address, (byte) (value & (~mask)));
     }
 
-    private boolean writeCard(byte command, byte [] data){
+    /**
+     * Executes a command by writing data to the FIFO buffer and calling the command.
+     * It waits for the command to complete and then reads the FIFO buffer again
+     * @param command the command to execute, as shown in section 10.3 in MFRC522's datasheet
+     * @param data byte array that will be written in the FIFO buffer
+     * @return the data in the FIFO buffer after executing the command
+     */
+    private boolean execute(byte command, byte [] data){
         backData = new byte[16];
         backLength = 0;
         byte irq = 0;
         byte irqWait = 0;
         byte lastBits = 0;
-        boolean success = true;
+        boolean success = false;
         if(command == COMMAND_MF_AUTHENT){
             irq = 0x12;
             irqWait = 0x10;
@@ -245,10 +283,10 @@ public class Rc522 {
             irq = 0x77;
             irqWait = 0x30;
         }
-        writeRegister(REGISTER_INTERRUPT_ENABLE, (byte) (irq | 0x80));
-        clearBitMask(REGISTER_COM_IRQ, (byte) 0x80);
-        setBitMask(REGISTER_FIFO_LEVEL, (byte) 0x80);
         writeRegister(REGISTER_COMMAND, COMMAND_IDLE);
+        writeRegister(REGISTER_COM_IRQ, (byte) 0x7F);
+        writeRegister(REGISTER_FIFO_LEVEL, (byte) 0x80);
+        writeRegister(REGISTER_INTERRUPT_ENABLE, (byte) (irq | 0x80));
 
         for(byte d : data){
             writeRegister(REGISTER_FIFO_DATA, d);
@@ -258,49 +296,52 @@ public class Rc522 {
         if(command == COMMAND_TRANSCEIVE){
             setBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
         }
-        int i = 2000;
-        byte n = 0;
-        while(true){
-            n = readRegister(REGISTER_COM_IRQ);
-            i--;
-            if(!((i != 0) && !((n & 0x01) > 0) && !((n & irqWait) > 0)))
+        long start = System.nanoTime();
+        long end = 0;
+        do{
+            byte n = readRegister(REGISTER_COM_IRQ);
+            if((n & irqWait) != 0){
+                success = true;
                 break;
-        }
-        clearBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
-
-        if(i != 0){
-            if((readRegister(REGISTER_ERROR) & 0x1B) == 0x00){
-                if ((n & irq & 0x01) > 0) {
-                    success = false;
-                }
-
-                if(command == COMMAND_TRANSCEIVE){
-                    n = readRegister(REGISTER_FIFO_LEVEL);
-                    lastBits = (byte) (readRegister(REGISTER_CONTROL) & 0x07);
-                    if(lastBits != 0){
-                        backLength = (n-1)* 8 + lastBits;
-                    }else{
-                        backLength = n*8;
-                    }
-
-                    if(n == 0){
-                        n = 1;
-                    }
-
-                    if( n > MAX_LENGTH){
-                        n = MAX_LENGTH;
-                    }
-
-                    for(i = 0; i < n; i++){
-                        backData[i] = readRegister(REGISTER_FIFO_DATA);
-                        backDataLength = i+1;
-                    }
-                }
-            }else {
+            }
+            if((n & 0x01) != 0){
                 return false;
             }
+            end = System.nanoTime();
+        }while(start + 35700000L > end);
+
+        if(!success){
+            Log.d("execute","timeout");
+            return false;
         }
-        return success;
+        byte errorValue = readRegister(REGISTER_ERROR);
+        if((errorValue & 0x13) != 0){
+            Log.d("execute", "error");
+            return false;
+        }
+        clearBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
+        if(command == COMMAND_TRANSCEIVE){
+            byte n = readRegister(REGISTER_FIFO_LEVEL);
+            lastBits = (byte) (readRegister(REGISTER_CONTROL) & 0x07);
+            if(lastBits != 0){
+                backLength = (n-1)* 8 + lastBits;
+            }else{
+                backLength = n*8;
+            }
+            if(n == 0){
+                n = 1;
+            }
+
+            if( n > MAX_LENGTH){
+                n = MAX_LENGTH;
+            }
+
+            for(byte i = 0; i < n; i++){
+                backData[i] = readRegister(REGISTER_FIFO_DATA);
+                backDataLength = i+1;
+            }
+        }
+        return true;
     }
 
     /**
@@ -321,7 +362,7 @@ public class Rc522 {
 
         writeRegister(REGISTER_BIT_FRAMING, (byte) 0x07);
 
-        boolean success =  writeCard(COMMAND_TRANSCEIVE, tagType);
+        boolean success =  execute(COMMAND_TRANSCEIVE, tagType);
         if(!success || backLength != 0x10){
             backLength = 0;
             success = false;
@@ -341,7 +382,7 @@ public class Rc522 {
         writeRegister(REGISTER_BIT_FRAMING, (byte) 0x00);
         byte[] serial_number = new byte[]{COMMAND_ANTICOLLISION, 0x20};
 
-        boolean success = writeCard(COMMAND_TRANSCEIVE,serial_number);
+        boolean success = execute(COMMAND_TRANSCEIVE,serial_number);
         if(success){
             if(backDataLength == 5){
                 for(i=0; i < 4; i++){
@@ -356,24 +397,34 @@ public class Rc522 {
         return success;
     }
 
+    //TODO: Might return null, needs to be handled
+
+    /**
+     * Calculates the CRC value
+     * @param data the data the crc value wil lbe generated for
+     * @return 2-byte array containing the crc value or null if something failed
+     */
     private byte[] calculateCrc(byte[] data){
-        clearBitMask(REGISTER_DIV_IRQ, (byte) 0x04);
-        setBitMask(REGISTER_FIFO_LEVEL, (byte) 0x80);
+        writeRegister(REGISTER_COMMAND, COMMAND_IDLE);
+        writeRegister(REGISTER_DIV_IRQ, (byte) 0x04);
+        writeRegister(REGISTER_FIFO_LEVEL, (byte) 0x80);
 
         for(int i = 0;i < data.length-2; i++){
             writeRegister(REGISTER_FIFO_DATA, data[i]);
         }
         writeRegister(REGISTER_COMMAND, COMMAND_CALCULATE_CRC);
-        int i = 255;
-        byte n;
-        while(true){
-            n = readRegister(REGISTER_DIV_IRQ);
-            i--;
-            if((i == 0) || ((n & 0x04)> 0)){
-                break;
+        long start = System.nanoTime();
+        long end = 0;
+        do{
+            byte n = readRegister(REGISTER_DIV_IRQ);
+            if((n & 0x04) != 0){
+                writeRegister(REGISTER_COMMAND, COMMAND_IDLE);
+                return new byte[]{readRegister(REGISTER_CRC_RESULT_LOW),readRegister(REGISTER_CRC_RESULT_HIGH)};
             }
-        }
-        return new byte[]{readRegister(REGISTER_CRC_RESULT_LOW),readRegister(REGISTER_CRC_RESULT_HIGH)};
+            end = System.nanoTime();
+        }while(start + 89000000L >= end);
+        Log.e("calculateCrc","timeout");
+        return null;
     }
 
     /**
@@ -396,7 +447,7 @@ public class Rc522 {
         data[7] = crc[0];
         data[8] = crc[1];
 
-        success = writeCard(COMMAND_TRANSCEIVE, data);
+        success = execute(COMMAND_TRANSCEIVE, data);
         return success && backLength == 0x18;
     }
 
@@ -419,7 +470,7 @@ public class Rc522 {
         for (i = 0, j = 8; i < 4; i++, j++)
             data[j] = uid[i];
 
-        boolean success = writeCard(COMMAND_MF_AUTHENT, data);
+        boolean success = execute(COMMAND_MF_AUTHENT, data);
         if((readRegister(REGISTER_RXTX_STATUS) & 0x08) == 0){
             return false;
         }
@@ -462,7 +513,7 @@ public class Rc522 {
         byte[] crc = calculateCrc(data);
         data[2] = crc[0];
         data[3] = crc[1];
-        boolean success = writeCard(COMMAND_TRANSCEIVE, data);
+        boolean success = execute(COMMAND_TRANSCEIVE, data);
         if(!success){
             return false;
         }
@@ -502,7 +553,7 @@ public class Rc522 {
         buff[2] = crc[0];
         buff[3] = crc[1];
 
-        boolean success = writeCard(COMMAND_TRANSCEIVE, buff);
+        boolean success = execute(COMMAND_TRANSCEIVE, buff);
         if (!success) {
             return false;
         }
@@ -515,11 +566,8 @@ public class Rc522 {
         crc = calculateCrc(buffWrite);
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
-        success = writeCard(COMMAND_TRANSCEIVE, buffWrite);
-        if(!success) {
-            return false;
-        }
-        return !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
+        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
     }
 
     /**
@@ -529,6 +577,194 @@ public class Rc522 {
     @Deprecated
     public boolean write(byte blockAddress, byte[] data){
         return writeBlock(blockAddress, data);
+    }
+
+    /**
+     * Increases the value of a block by the specified operand.
+     * The data is stored in the internal transfer buffer.
+     * The block must be a value block.
+     * Tag must be selected and block authenticated
+     * @param block the block's address
+     * @param operand the sum's operand
+     * @return true if operation was successful
+     */
+    public boolean increaseBlock(byte block, int operand) {
+        byte buff[] = new byte[4];
+        buff[0] = COMMAND_INCREMENT;
+        buff[1] = block;
+        byte[] crc = calculateCrc(buff);
+        buff[2] = crc[0];
+        buff[3] = crc[1];
+
+        boolean success = execute(COMMAND_TRANSCEIVE, buff);
+        if (!success) {
+            return false;
+        }
+        if (backLength != 4 || (backData[0] & 0x0F) != 0x0A) {
+            return false;
+        }
+        byte buffWrite[] = new byte[6];
+        System.arraycopy(intToByteArray(operand), 0, buffWrite, 0, 4);
+        crc = calculateCrc(buffWrite);
+        buffWrite[buffWrite.length - 2] = crc[0];
+        buffWrite[buffWrite.length - 1] = crc[1];
+        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        return true;
+        //TODO: Execute always returns false
+        //return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
+    }
+
+    /**
+     * Decreases the value of a block by the specified operand.
+     * The data is stored in the internal transfer buffer.
+     * The block must be a value block.
+     * Tag must be selected and block authenticated
+     * @param block the block's address
+     * @param operand the substraction's operand
+     * @return true if operation was successful
+     */
+    public boolean decreaseBlock(byte block, int operand) {
+        byte buff[] = new byte[4];
+        buff[0] = COMMAND_DECREMENT;
+        buff[1] = block;
+        byte[] crc = calculateCrc(buff);
+        buff[2] = crc[0];
+        buff[3] = crc[1];
+
+        boolean success = execute(COMMAND_TRANSCEIVE, buff);
+        if (!success) {
+            return false;
+        }
+        if (backLength != 4 || (backData[0] & 0x0F) != 0x0A) {
+            return false;
+        }
+        byte buffWrite[] = new byte[6];
+        System.arraycopy(intToByteArray(operand), 0, buffWrite, 0, 4);
+        crc = calculateCrc(buffWrite);
+        buffWrite[buffWrite.length - 2] = crc[0];
+        buffWrite[buffWrite.length - 1] = crc[1];
+        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        return true;
+        //TODO: Execute always returns false for this
+        //return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
+    }
+
+    /**
+     * Writes the contents of the transfer buffer to a block
+     * @param block the address of the block to write to
+     * @return true if operation was successful
+     */
+    public boolean transferBlock(byte block){
+        Log.d("transferBlock", String.valueOf(block));
+        byte buff[] = new byte[4];
+        buff[0] = COMMAND_TRANSFER;
+        buff[1] = block;
+        byte[] crc = calculateCrc(buff);
+        buff[2] = crc[0];
+        buff[3] = crc[1];
+        return execute(COMMAND_TRANSCEIVE, buff);
+    }
+
+    /**
+     * Writes on the transfer buffer the contents of a value block
+     * @param block the address of the block to read from
+     * @return true if operation was successful
+     */
+    public boolean restoreBlock(byte block) {
+        byte buff[] = new byte[4];
+        buff[0] = COMMAND_RESTORE;
+        buff[1] = block;
+        byte[] crc = calculateCrc(buff);
+        buff[2] = crc[0];
+        buff[3] = crc[1];
+
+        boolean success = execute(COMMAND_TRANSCEIVE, buff);
+        if (!success) {
+            return false;
+        }
+        if (backLength != 4 || (backData[0] & 0x0F) != 0x0A) {
+            return false;
+        }
+        byte buffWrite[] = {0,0,0,0,0,0};
+        crc = calculateCrc(buffWrite);
+        buffWrite[buffWrite.length - 2] = crc[0];
+        buffWrite[buffWrite.length - 1] = crc[1];
+        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        return true;
+        //TODO: Execute always returns false for this
+        //return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
+    }
+
+    /**
+     * Writes a 32-bit signed integer to a value block in the required format
+     * The format is specified in section 8.6.2.1 in MIFARE 1k's datasheet
+     * Tag must be selected and block authenticated
+     * @param block the block's address
+     * @param value new value to be written to the block
+     * @return true if writing was successful
+     */
+    public boolean writeValue(byte block, int value){
+        byte buffer[] = new byte[16];
+        buffer[0] = (byte) (value & 0xFF);
+        buffer[1] = (byte) ((value & 0xFF00) >> 8);
+        buffer[2] = (byte) ((value & 0xFF0000) >> 16);
+        buffer[3] = (byte) ((value & 0xFF000000) >> 24);
+        buffer[4] = (byte) ~buffer[0];
+        buffer[5] = (byte) ~buffer[1];
+        buffer[6] = (byte) ~buffer[2];
+        buffer[7] = (byte) ~buffer[3];
+        buffer[8] = buffer[0];
+        buffer[9] = buffer[1];
+        buffer[10] = buffer[2];
+        buffer[11] = buffer[3];
+        buffer[12] = block;
+        buffer[13] = (byte) ~block;
+        buffer[14] = block;
+        buffer[15] = (byte) ~block;
+        Log.d("writeValue", block+", "+value+","+dataToHexString(buffer));
+        return writeBlock(block, buffer);
+    }
+
+    /**
+     * Reads a value block and converts the stored value
+     * @param block the block's address
+     * @return null,if read failed, otherwise it returns an Integer object contaiing the 32-bit signed value
+     */
+    @Nullable
+    public Integer readValue(byte block){
+        byte buffer[] = new byte[16];
+        if(!readBlock(block, buffer)){
+            return null;
+        }
+        Log.d("readValue",block+","+dataToHexString(buffer));
+        return ((buffer[0]&0xFF)|((buffer[1]&0xFF)<<8)|((buffer[2]&0xFF)<<16)|((buffer[3]&0xFF)<<24));
+    }
+
+    /**
+     * Writes a sector's trailer
+     * This block contains the access configuration for the entire sector, caution must be taken when
+     * modifying its contents as it can lead to inaccessible sectors. Please refer to the tag's documentation
+     * Tag must be selected and sector authenticated first
+     * @see <a href="http://www.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf#page=12" target="blank">Reference sheet</a>
+     * @param sector the sector's number
+     * @param keyA the new key A that will be set
+     * @param accessBits the access bits that will be set. Can be obtained with {@link #calculateAccessBits(byte[], byte[], byte[])}
+     * @param userData a single byte containing user data
+     * @param keyB the new key B that will be set
+     * @return true if writing was successful, false otherwise or if parameters are invalid
+     */
+    public boolean writeTrailer(byte sector, byte[] keyA, byte[] accessBits, byte userData, byte[] keyB){
+        byte address = getBlockAddress(sector, 3);
+        if(keyA.length != 6 || keyB.length != 6 || accessBits.length != 3){
+            Log.d("writeTrailer","incorrect lengths");
+            return false;
+        }
+        byte[] trailer = new byte[16];
+        System.arraycopy(keyA, 0, trailer, 0, 6);
+        System.arraycopy(accessBits, 0, trailer, 6, 3);
+        trailer[9] = userData;
+        System.arraycopy(keyB, 0, trailer, 10, 6);
+        return writeBlock(address, trailer);
     }
 
     /**
@@ -549,35 +785,6 @@ public class Rc522 {
         return getBlockAddress((byte)sector, (byte)block);
     }
 
-    /**
-     * Returns a string representation of the last read tag's UID
-     * @param separator The character that separates each element of the uid
-     * @return A string representing the tag's UID
-     */
-    public String getUidString(String separator){
-        if(this.uid == null){
-            return "";
-        }
-        StringBuilder sb = new StringBuilder();
-        String prefix = "";
-        for(byte b : this.uid){
-            int ubyte = b&0xff;
-            if(ubyte == 0){
-                break;
-            }
-            sb.append(prefix);
-            prefix = separator;
-            sb.append(ubyte);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * @see #getUidString(), uses "-" as a separator by default
-     */
-    public String getUidString(){
-        return getUidString("-");
-    }
 
     private static final char[] HEX_CHARS = "0123456789ABCDEF".toCharArray();
 
@@ -696,29 +903,16 @@ public class Rc522 {
     }
 
     /**
-     * Writes a sector's trailer
-     * This block contains the access configuration for the entire sector, caution must be taken when
-     * modifying its contents as it can lead to inaccessible sectors. Please refer to the tag's documentation
-     * Tag must be selected and sector authenticated first
-     * @see <a href="http://www.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf#page=12" target="blank">Reference sheet</a>
-     * @param sector the sector's number
-     * @param keyA the new key A that will be set
-     * @param accessBits the access bits that will be set. Can be obtained with {@link #calculateAccessBits(byte[], byte[], byte[])}
-     * @param userData a single byte containing user data
-     * @param keyB the new key B that will be set
-     * @return true if writing was successful, false otherwise or if parameters are invalid
+     * Converts a 32-bit signed integer into a 4-byte array
+     * @param value value to be converted
+     * @return byte array
      */
-    public boolean writeTrailer(byte sector, byte[] keyA, byte[] accessBits, byte userData, byte[] keyB){
-        byte address = getBlockAddress(sector, 3);
-        if(keyA.length != 6 || keyB.length != 6 || accessBits.length != 3){
-            Log.d("writeTrailer","incorrect lengths");
-            return false;
-        }
-        byte[] trailer = new byte[16];
-        System.arraycopy(keyA, 0, trailer, 0, 6);
-        System.arraycopy(accessBits, 0, trailer, 6, 3);
-        trailer[9] = userData;
-        System.arraycopy(keyB, 0, trailer, 10, 6);
-        return writeBlock(address, trailer);
+    private static byte[] intToByteArray(int value){
+        return new byte[]{
+                (byte) (value & 0xFF),
+                (byte) ((value & 0xFF00) >> 8),
+                (byte) ((value & 0xFF0000) >> 16),
+                (byte) ((value & 0xFF000000) >> 24)
+        };
     }
 }
