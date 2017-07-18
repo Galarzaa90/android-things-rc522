@@ -127,7 +127,7 @@ public class Rc522 {
     }
 
     /**
-     * Performs the inital device setup and configure the pins used
+     * Performs the initial device setup and configure the pins used
      */
     private void initializeDevice(){
         reset();
@@ -145,7 +145,7 @@ public class Rc522 {
     }
 
     /**
-     * Gets the UID of the last card that was successfully read. This may be empty if no hard has
+     * Gets the UID of the last card that was successfully read. This may be empty if no card has
      * been read before.
      * @return A byte array containing the card's UID.
      */
@@ -154,7 +154,7 @@ public class Rc522 {
     }
 
     /**
-     * Gets the UID of the last card that was successfully read. This may be empty if no hard has
+     * Gets the UID of the last card that was successfully read. This may be empty if no card has
      * been read before.
      * @deprecated Method renamed, use {@link #getUid()} instead
      */
@@ -187,7 +187,7 @@ public class Rc522 {
     }
 
     /**
-     * @see #getUidString(), uses "-" as a separator by default
+     * Returns a string representation of the last read tag's UID, separated by '-'
      */
     public String getUidString(){
         return getUidString("-");
@@ -434,7 +434,7 @@ public class Rc522 {
     /**
      * Selects the tag to be used in following operations
      * @param uid Byte array containing the tag's uid
-     * @return true if no errors occured
+     * @return true if no errors occurred
      */
     public boolean selectTag(byte[] uid){
         boolean success;
@@ -459,20 +459,20 @@ public class Rc522 {
      * Authenticates the use of a specific address. The tag must be selected before.
      * For reference, see section 10.3.1.9 MFAuthent in MFRC522's datasheet
      * @param authMode The authentication mode, {@link #AUTH_A} or {@link #AUTH_B}
-     * @param blockAddress The byte address of the block to authenticate for
+     * @param address The byte address of the block to authenticate for
      * @param key A six byte array containing the key used to authenticate
      * @return true if authentication was successful
      */
-    public boolean authenticateCard(byte authMode,byte blockAddress,byte[] key) {
-        debugLog("authenticateCard: authMode: %s, block: %d, key: %s",
+    public boolean authenticateCard(byte authMode,byte address,byte[] key) {
+        debugLog("authenticateCard: authMode: %s, address: %d, key: %s",
                 (authMode == AUTH_A ? "A" : "B"),
-                blockAddress,
+                address,
                 dataToHexString(key));
         byte data[] = new byte[12];
         int i, j;
 
         data[0] = authMode;
-        data[1] = blockAddress;
+        data[1] = address;
         for (i = 0, j = 2; i < 6; i++, j++)
             data[j] = key[i];
         for (i = 0, j = 8; i < 4; i++, j++)
@@ -490,14 +490,19 @@ public class Rc522 {
 
     /**
      * Authenticates the use of a specific address. The tag must be selected before.
-     * @deprecated use {@link #authenticateCard(byte, byte, byte[])}
+     * For reference, see section 10.3.1.9 MFAuthent in MFRC522's datasheet
+     * @param authMode The authentication mode, {@link #AUTH_A} or {@link #AUTH_B}
+     * @param address The byte address of the block to authenticate for
+     * @param key A six byte array containing the key used to authenticate
+     * @param uid The tag's UID
+     * @return true if authentication was successful
+     * @deprecated use {@link #authenticateCard(byte, byte, byte[])} instead
      */
     @Deprecated
-    public boolean authenticateCard(byte authMode,byte blockAddress,byte[] key, byte[] uid) {
+    public boolean authenticateCard(byte authMode,byte address,byte[] key, byte[] uid) {
         this.uid = uid;
-        return authenticateCard(authMode, blockAddress, key);
+        return authenticateCard(authMode, address, key);
     }
-
 
     /**
      * Ends operations that use crypto and cleans up
@@ -537,19 +542,19 @@ public class Rc522 {
      * Reads the current data stored in the tag's block.
      * Authentication is required
      * @deprecated Use {@link #readBlock(byte, byte[])} as it can report read status
-     * @param blockAddress the byte address of the block to read from
+     * @param address the byte address of the block to read from
      * @return 16 bytes array of the current value in that block
      */
     @Deprecated
-    public byte[] readBlock(byte blockAddress){
+    public byte[] readBlock(byte address){
         byte value[] = new byte[16];
-        readBlock(blockAddress,value);
+        readBlock(address,value);
         return value;
     }
 
     /**
-     * Writes data to a block in the tag
-     * Authentication is required
+     * Writes data to a block in the tag.
+     * Authentication is required.
      * @param address the byte address of the block to write to
      * @param data 16 byte array with the data that wants to be written
      * @return true if writing was successful
@@ -581,12 +586,15 @@ public class Rc522 {
     }
 
     /**
-     * @see #writeBlock(byte, byte[])
-     * @deprecated use {@link #writeBlock(byte, byte[])}
+     * Writes data to a block in the tag.
+     * Authentication is required.
+     * @param address the byte address of the block to write to
+     * @param data 16 byte array with the data that wants to be written
+     * @deprecated renamed to {@link #writeBlock(byte, byte[])}.
      */
     @Deprecated
-    public boolean write(byte blockAddress, byte[] data){
-        return writeBlock(blockAddress, data);
+    public boolean write(byte address, byte[] data){
+        return writeBlock(address, data);
     }
 
     /**
@@ -731,7 +739,7 @@ public class Rc522 {
     /**
      * Reads a value block and converts the stored value
      * @param address the block's address
-     * @return null,if read failed, otherwise it returns an Integer object contaiing the 32-bit signed value
+     * @return null,if read failed, otherwise it returns an Integer object containing the 32-bit signed value
      */
     @Nullable
     public Integer readValue(byte address){
@@ -744,7 +752,7 @@ public class Rc522 {
     }
 
     /**
-     * Writes a sector's trailer
+     * Writes a sector's trailer's data.
      * This block contains the access configuration for the entire sector, caution must be taken when
      * modifying its contents as it can lead to inaccessible sectors. Please refer to the tag's documentation
      * Tag must be selected and sector authenticated first
@@ -788,7 +796,10 @@ public class Rc522 {
     }
 
     /**
-     * @see #getBlockAddress(byte, byte)
+     * MIFARE tags blocks are organized in sectors, this calculates the address of a block in a
+     * specific sector
+     * @param sector the sector number
+     * @param block the sector's block
      */
     public static byte getBlockAddress(int sector, int block){
         return getBlockAddress((byte)sector, (byte)block);
