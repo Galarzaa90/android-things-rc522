@@ -21,6 +21,7 @@ import java.io.IOException;
  */
 
 public class Rc522 {
+    private static final String TAG = "Rc522";
     private SpiDevice device;
     private Gpio resetPin;
     private int busSpeed = 1000000;
@@ -30,6 +31,8 @@ public class Rc522 {
     private byte[] backData;
     private int backDataLength;
     private int backLength;
+
+    private boolean debugging = false;
 
     private static final byte MAX_LENGTH = 16;
 
@@ -86,6 +89,7 @@ public class Rc522 {
     private static final byte REGISTER_TIMER_RELOAD_HIGH = 0x2C; //TReloadReg
     private static final byte REGISTER_TIMER_RELOAD_LOW = 0x2D; //TReloadReg
     private boolean authenticated;
+    private boolean breakpoint = false;
 
     /**
      * Initializes RC522 with the configured SPI port and pins.
@@ -134,6 +138,10 @@ public class Rc522 {
         writeRegister(REGISTER_TX_MODE, (byte) 0x40);
         writeRegister(REGISTER_MODE, (byte) 0x3D);
         setAntenna(true);
+    }
+
+    public void setDebugging(boolean debugging) {
+        this.debugging = debugging;
     }
 
     /**
@@ -309,14 +317,11 @@ public class Rc522 {
             }
             end = System.nanoTime();
         }while(start + 35700000L > end);
-
         if(!success){
-            Log.d("execute","timeout");
             return false;
         }
         byte errorValue = readRegister(REGISTER_ERROR);
         if((errorValue & 0x13) != 0){
-            Log.d("execute", "error");
             return false;
         }
         clearBitMask(REGISTER_BIT_FRAMING, (byte) 0x80);
@@ -423,7 +428,6 @@ public class Rc522 {
             }
             end = System.nanoTime();
         }while(start + 89000000L >= end);
-        Log.e("calculateCrc","timeout");
         return null;
     }
 
@@ -453,13 +457,17 @@ public class Rc522 {
 
     /**
      * Authenticates the use of a specific address. The tag must be selected before.
+     * For reference, see section 10.3.1.9 MFAuthent in MFRC522's datasheet
      * @param authMode The authentication mode, {@link #AUTH_A} or {@link #AUTH_B}
      * @param blockAddress The byte address of the block to authenticate for
      * @param key A six byte array containing the key used to authenticate
      * @return true if authentication was successful
      */
     public boolean authenticateCard(byte authMode,byte blockAddress,byte[] key) {
-        //For reference, see section 10.3.1.9 MFAuthent in MFRC522's datasheet
+        debugLog("authenticateCard: authMode: %s, block: %d, key: %s",
+                (authMode == AUTH_A ? "A" : "B"),
+                blockAddress,
+                dataToHexString(key));
         byte data[] = new byte[12];
         int i, j;
 
@@ -502,14 +510,15 @@ public class Rc522 {
     /**
      * Reads the current data stored in the tag's block.
      * Authentication is required
-     * @param blockAddress the block to read data from
+     * @param address the address of the block to read data from
      * @param buffer the byte array to store the read data to. Length must be 16
      * @return true if reading was successful
      */
-    public boolean readBlock(byte blockAddress, byte[] buffer){
+    public boolean readBlock(byte address, byte[] buffer){
+        debugLog("readBlock: address: %d",address);
         byte data[]=new byte[4];
         data[0]=COMMAND_READ;
-        data[1]=blockAddress;
+        data[1]=address;
         byte[] crc = calculateCrc(data);
         data[2] = crc[0];
         data[3] = crc[1];
@@ -541,14 +550,15 @@ public class Rc522 {
     /**
      * Writes data to a block in the tag
      * Authentication is required
-     * @param blockAddress the byte address of the block to write to
+     * @param address the byte address of the block to write to
      * @param data 16 byte array with the data that wants to be written
      * @return true if writing was successful
      */
-    public boolean writeBlock(byte blockAddress, byte[] data) {
+    public boolean writeBlock(byte address, byte[] data) {
+        debugLog("writeBlock: address: %d, data: %s",address, dataToHexString(data));
         byte buff[] = new byte[4];
         buff[0] = COMMAND_WRITE;
-        buff[1] = blockAddress;
+        buff[1] = address;
         byte[] crc = calculateCrc(buff);
         buff[2] = crc[0];
         buff[3] = crc[1];
@@ -584,22 +594,19 @@ public class Rc522 {
      * The data is stored in the internal transfer buffer.
      * The block must be a value block.
      * Tag must be selected and block authenticated
-     * @param block the block's address
+     * @param address the block's address
      * @param operand the sum's operand
      * @return true if operation was successful
      */
-    public boolean increaseBlock(byte block, int operand) {
+    public boolean increaseBlock(byte address, int operand) {
+        debugLog("increaseBlock: address %d, operand %d",address, operand);
         byte buff[] = new byte[4];
         buff[0] = COMMAND_INCREMENT;
-        buff[1] = block;
+        buff[1] = address;
         byte[] crc = calculateCrc(buff);
         buff[2] = crc[0];
         buff[3] = crc[1];
-
         boolean success = execute(COMMAND_TRANSCEIVE, buff);
-        if (!success) {
-            return false;
-        }
         if (backLength != 4 || (backData[0] & 0x0F) != 0x0A) {
             return false;
         }
@@ -608,10 +615,8 @@ public class Rc522 {
         crc = calculateCrc(buffWrite);
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
-        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        execute(COMMAND_TRANSCEIVE, buffWrite);
         return true;
-        //TODO: Execute always returns false
-        //return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
     }
 
     /**
@@ -619,18 +624,18 @@ public class Rc522 {
      * The data is stored in the internal transfer buffer.
      * The block must be a value block.
      * Tag must be selected and block authenticated
-     * @param block the block's address
+     * @param address the block's address
      * @param operand the substraction's operand
      * @return true if operation was successful
      */
-    public boolean decreaseBlock(byte block, int operand) {
+    public boolean decreaseBlock(byte address, int operand) {
+        debugLog("increaseBlock: address %d, operand %d",address, operand);
         byte buff[] = new byte[4];
         buff[0] = COMMAND_DECREMENT;
-        buff[1] = block;
+        buff[1] = address;
         byte[] crc = calculateCrc(buff);
         buff[2] = crc[0];
         buff[3] = crc[1];
-
         boolean success = execute(COMMAND_TRANSCEIVE, buff);
         if (!success) {
             return false;
@@ -643,22 +648,21 @@ public class Rc522 {
         crc = calculateCrc(buffWrite);
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
-        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        breakpoint = true;
+        execute(COMMAND_TRANSCEIVE, buffWrite);
         return true;
-        //TODO: Execute always returns false for this
-        //return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
     }
 
     /**
      * Writes the contents of the transfer buffer to a block
-     * @param block the address of the block to write to
+     * @param address the address of the block to write to
      * @return true if operation was successful
      */
-    public boolean transferBlock(byte block){
-        Log.d("transferBlock", String.valueOf(block));
+    public boolean transferBlock(byte address){
+        debugLog("transferBlock: address: %d",address);
         byte buff[] = new byte[4];
         buff[0] = COMMAND_TRANSFER;
-        buff[1] = block;
+        buff[1] = address;
         byte[] crc = calculateCrc(buff);
         buff[2] = crc[0];
         buff[3] = crc[1];
@@ -667,13 +671,14 @@ public class Rc522 {
 
     /**
      * Writes on the transfer buffer the contents of a value block
-     * @param block the address of the block to read from
+     * @param address the address of the block to read from
      * @return true if operation was successful
      */
-    public boolean restoreBlock(byte block) {
+    public boolean restoreBlock(byte address) {
+        debugLog("transferBlock: address: %d",address);
         byte buff[] = new byte[4];
         buff[0] = COMMAND_RESTORE;
-        buff[1] = block;
+        buff[1] = address;
         byte[] crc = calculateCrc(buff);
         buff[2] = crc[0];
         buff[3] = crc[1];
@@ -689,21 +694,20 @@ public class Rc522 {
         crc = calculateCrc(buffWrite);
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
-        success = execute(COMMAND_TRANSCEIVE, buffWrite);
+        execute(COMMAND_TRANSCEIVE, buffWrite);
         return true;
-        //TODO: Execute always returns false for this
-        //return success && !(backLength != 4 || (backData[0] & 0x0F) != 0x0A);
     }
 
     /**
      * Writes a 32-bit signed integer to a value block in the required format
      * The format is specified in section 8.6.2.1 in MIFARE 1k's datasheet
      * Tag must be selected and block authenticated
-     * @param block the block's address
+     * @param address the block's address
      * @param value new value to be written to the block
      * @return true if writing was successful
      */
-    public boolean writeValue(byte block, int value){
+    public boolean writeValue(byte address, int value){
+        debugLog("writeValue: address: %d, value: %d",address, value);
         byte buffer[] = new byte[16];
         buffer[0] = (byte) (value & 0xFF);
         buffer[1] = (byte) ((value & 0xFF00) >> 8);
@@ -717,26 +721,25 @@ public class Rc522 {
         buffer[9] = buffer[1];
         buffer[10] = buffer[2];
         buffer[11] = buffer[3];
-        buffer[12] = block;
-        buffer[13] = (byte) ~block;
-        buffer[14] = block;
-        buffer[15] = (byte) ~block;
-        Log.d("writeValue", block+", "+value+","+dataToHexString(buffer));
-        return writeBlock(block, buffer);
+        buffer[12] = address;
+        buffer[13] = (byte) ~address;
+        buffer[14] = address;
+        buffer[15] = (byte) ~address;
+        return writeBlock(address, buffer);
     }
 
     /**
      * Reads a value block and converts the stored value
-     * @param block the block's address
+     * @param address the block's address
      * @return null,if read failed, otherwise it returns an Integer object contaiing the 32-bit signed value
      */
     @Nullable
-    public Integer readValue(byte block){
+    public Integer readValue(byte address){
+        debugLog("readValue: address: %s", address);
         byte buffer[] = new byte[16];
-        if(!readBlock(block, buffer)){
+        if(!readBlock(address, buffer)){
             return null;
         }
-        Log.d("readValue",block+","+dataToHexString(buffer));
         return ((buffer[0]&0xFF)|((buffer[1]&0xFF)<<8)|((buffer[2]&0xFF)<<16)|((buffer[3]&0xFF)<<24));
     }
 
@@ -754,9 +757,15 @@ public class Rc522 {
      * @return true if writing was successful, false otherwise or if parameters are invalid
      */
     public boolean writeTrailer(byte sector, byte[] keyA, byte[] accessBits, byte userData, byte[] keyB){
+        debugLog("writeTrailer: address: %d, keyA: %s, accessBits: %s, userData: %d, keyB: %s",
+                sector,
+                dataToHexString(keyA),
+                dataToHexString(accessBits),
+                userData,
+                dataToHexString(keyB));
         byte address = getBlockAddress(sector, 3);
         if(keyA.length != 6 || keyB.length != 6 || accessBits.length != 3){
-            Log.d("writeTrailer","incorrect lengths");
+            Log.e(TAG,"writeTrailer: Parameter with incorrect length");
             return false;
         }
         byte[] trailer = new byte[16];
@@ -914,5 +923,15 @@ public class Rc522 {
                 (byte) ((value & 0xFF0000) >> 16),
                 (byte) ((value & 0xFF000000) >> 24)
         };
+    }
+
+    private void debugLog(String message){
+        if(debugging){
+            Log.d(TAG, message);
+        }
+    }
+
+    private void debugLog(String format, Object... args){
+        debugLog(String.format(format, args));
     }
 }

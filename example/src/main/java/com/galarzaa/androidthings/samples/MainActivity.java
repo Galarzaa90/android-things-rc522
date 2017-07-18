@@ -16,7 +16,7 @@ import com.google.android.things.pio.SpiDevice;
 import java.io.IOException;
 
 public class MainActivity extends AppCompatActivity {
-    private Rc522 mRrc522;
+    private Rc522 mRc522;
     RfidTask mRfidTask;
     private TextView mTagDetectedView;
     private TextView mTagUidView;
@@ -43,7 +43,7 @@ public class MainActivity extends AppCompatActivity {
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                mRfidTask = new RfidTask(mRrc522);
+                mRfidTask = new RfidTask(mRc522);
                 mRfidTask.execute();
                 ((Button)v).setText(R.string.reading);
             }
@@ -52,7 +52,8 @@ public class MainActivity extends AppCompatActivity {
         try {
             spiDevice = pioService.openSpiDevice(SPI_PORT);
             gpioReset = pioService.openGpio(PIN_RESET);
-            mRrc522 = new Rc522(spiDevice, gpioReset);
+            mRc522 = new Rc522(spiDevice, gpioReset);
+            mRc522.setDebugging(true);
         } catch (IOException e) {
             Toast.makeText(this, e.getLocalizedMessage(), Toast.LENGTH_SHORT).show();
             e.printStackTrace();
@@ -121,7 +122,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             // Try to avoid doing any non RC522 operations until you're done communicating with it.
-            byte block = Rc522.getBlockAddress(2,1);
+            byte address = Rc522.getBlockAddress(2,1);
             // Mifare's card default key A and key B, the key may have been changed previously
             byte[] key = {(byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF, (byte)0xFF};
             // Each sector holds 16 bytes
@@ -130,12 +131,12 @@ public class MainActivity extends AppCompatActivity {
             // In this case, Rc522.AUTH_A or Rc522.AUTH_B can be used
             try {
                 //We need to authenticate the card, each sector can have a different key
-                boolean result = rc522.authenticateCard(Rc522.AUTH_A, block, key);
+                boolean result = rc522.authenticateCard(Rc522.AUTH_A, address, key);
                 if (!result) {
                     mTagResultsView.setText(R.string.authetication_error);
                     return;
                 }
-                result = rc522.writeBlock(block, newData);
+                result = rc522.writeBlock(address, newData);
                 if(!result){
                     mTagResultsView.setText(R.string.write_error);
                     return;
@@ -143,7 +144,7 @@ public class MainActivity extends AppCompatActivity {
                 resultsText += "Sector written successfully";
                 byte[] buffer = new byte[16];
                 //Since we're still using the same block, we don't need to authenticate again
-                result = rc522.readBlock(block, buffer);
+                result = rc522.readBlock(address, buffer);
                 if(!result){
                     mTagResultsView.setText(R.string.read_error);
                     return;
