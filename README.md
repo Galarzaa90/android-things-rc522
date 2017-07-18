@@ -8,11 +8,12 @@ Based on [pi-rc522](https://github.com/ondryaso/pi-rc522) by user **ondryaso**
 * Detect MIFARE 1k tags (not tested in other tags)
 * Authenticate, read and write to tags
 * Change authentication keys and access bits (must be done manually)
-
-### Planned features
 * Increment, decrement, transfer and restore for value blocks
 * Easier way of changing keys and access bits
+
+### Planned features
 * Helper functions
+* Better error handling
 
 ## Connections
 The connections vary based on the [board](https://developer.android.com/things/hardware/developer-kits.html) used.
@@ -23,7 +24,7 @@ The connections vary based on the [board](https://developer.android.com/things/h
 This library is available at jCenter. To install add this to your module's build.gradle
 ```groovy
 dependencies {
-    compile 'com.galarzaa.android-things:rc522:0.2.2'
+    compile 'com.galarzaa.android-things:rc522:0.3.0'
 ```
 
 ## Usage
