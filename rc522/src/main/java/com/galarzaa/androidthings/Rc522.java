@@ -14,9 +14,8 @@ import java.io.IOException;
  * <br>
  * Based on <a href="https://github.com/ondryaso/pi-rc522/" target="blank">pi-rc22 by ondryaso</a>
  *
- *
- *
  * @see <a href="https://www.nxp.com/documents/data_sheet/MFRC522.pdf" target="blank">MFRC522 Reference</a>
+ * @see <a href="http://www.nxp.com/docs/en/data-sheet/MF1S50YYX_V1.pdf" target="blank">MIFARE Classic Reference/a>
  * @author Allan Galarza
  */
 
@@ -33,17 +32,9 @@ public class Rc522 {
     private int backLength;
 
     private boolean debugging = false;
+    private ErrorType error;
 
     private static final byte MAX_LENGTH = 16;
-
-    /* Found in Table 149, page 70*/
-    private static final byte COMMAND_IDLE = 0x00;
-    private static final byte COMMAND_CALCULATE_CRC = 0x03;
-    private static final byte COMMAND_TRANSMIT = 0x04;
-    private static final byte COMMAND_RECEIVE = 0x08;
-    private static final byte COMMAND_TRANSCEIVE = 0x0C;
-    private static final byte COMMAND_MF_AUTHENT = 0x0E;
-    private static final byte COMMAND_SOFT_RESET = 0x0F;
 
     /**
      * Authentication using Key A
@@ -54,6 +45,16 @@ public class Rc522 {
      */
     public static final byte AUTH_B = 0x61;
 
+    /* MFRC522 commands, found in Table 149, page 70 */
+    private static final byte COMMAND_IDLE = 0x00;
+    private static final byte COMMAND_CALCULATE_CRC = 0x03;
+    private static final byte COMMAND_TRANSMIT = 0x04;
+    private static final byte COMMAND_RECEIVE = 0x08;
+    private static final byte COMMAND_TRANSCEIVE = 0x0C;
+    private static final byte COMMAND_MF_AUTHENT = 0x0E;
+    private static final byte COMMAND_SOFT_RESET = 0x0F;
+
+    /* MIFARE commands */
     private static final byte COMMAND_READ = 0x30;
     private static final byte COMMAND_WRITE = (byte) 0xA0;
     private static final byte COMMAND_INCREMENT = (byte) 0xC1;
@@ -84,12 +85,11 @@ public class Rc522 {
     private static final byte REGISTER_TX_MODE = 0x15; //TxASKReg
     private static final byte REGISTER_CRC_RESULT_HIGH = 0x21; //CRCResultReg
     private static final byte REGISTER_CRC_RESULT_LOW = 0x22; //CRCResultReg
+    private static final byte REGISTER_RF_CONFIG = 0x26; //RFCfgReg
     private static final byte REGISTER_TIMER_MODE = 0x2A; //TModeReg
     private static final byte REGISTER_TIMER_PRESCALER_MODE = 0x2B; //TPrescalerReg
     private static final byte REGISTER_TIMER_RELOAD_HIGH = 0x2C; //TReloadReg
     private static final byte REGISTER_TIMER_RELOAD_LOW = 0x2D; //TReloadReg
-    private boolean authenticated;
-    private boolean breakpoint = false;
 
     /**
      * Initializes RC522 with the configured SPI port and pins.
@@ -140,8 +140,20 @@ public class Rc522 {
         setAntenna(true);
     }
 
+    /**
+     * Enables or disables debugging mode, printing information on the logcat.
+     * @param debugging true to enable, false to disable
+     */
     public void setDebugging(boolean debugging) {
         this.debugging = debugging;
+    }
+
+    /**
+     * Gets the last error, to get a more specific reason when an operation fails
+     * @return the error's type
+     */
+    public ErrorType getError(){
+        return error;
     }
 
     /**
@@ -220,7 +232,7 @@ public class Rc522 {
      * @param address The address to read from
      * @return the byte value currently stored in the register
      */
-    private byte readRegister(byte address){
+    public byte readRegister(byte address){
         byte buffer[] = {(byte) (((address << 1) & 0x7E) | 0x80), 0};
         byte response[] = new byte[buffer.length];
         try {
@@ -236,7 +248,7 @@ public class Rc522 {
      * Disables or enables the RC522's antenna
      * @param enabled State to set the antenna to
      */
-    private void setAntenna(boolean enabled){
+    public void setAntenna(boolean enabled){
         if(enabled){
             byte currentState = readRegister(REGISTER_TX_CONTROL);
             if((currentState & 0x03) != 0x03){
@@ -245,6 +257,15 @@ public class Rc522 {
         }else{
             clearBitMask(REGISTER_TX_CONTROL, (byte) 0x03);
         }
+    }
+
+    /**
+     * Sets the antenna's gain by writing in the configuration register.
+     * @param rxGain the desired decibel value out of the available options
+     */
+    public void setAntennaGain(RxGain rxGain){
+        clearBitMask(REGISTER_RF_CONFIG, (byte) 0x70);
+        setBitMask(REGISTER_RF_CONFIG, rxGain.getValue());
     }
 
     /**
@@ -402,13 +423,12 @@ public class Rc522 {
         return success;
     }
 
-    //TODO: Might return null, needs to be handled
-
     /**
      * Calculates the CRC value
      * @param data the data the crc value wil lbe generated for
      * @return 2-byte array containing the crc value or null if something failed
      */
+    @Nullable
     private byte[] calculateCrc(byte[] data){
         writeRegister(REGISTER_COMMAND, COMMAND_IDLE);
         writeRegister(REGISTER_DIV_IRQ, (byte) 0x04);
@@ -422,12 +442,15 @@ public class Rc522 {
         long end = 0;
         do{
             byte n = readRegister(REGISTER_DIV_IRQ);
+            //Check if CRCIRq bit is set
             if((n & 0x04) != 0){
                 writeRegister(REGISTER_COMMAND, COMMAND_IDLE);
                 return new byte[]{readRegister(REGISTER_CRC_RESULT_LOW),readRegister(REGISTER_CRC_RESULT_HIGH)};
             }
             end = System.nanoTime();
         }while(start + 89000000L >= end);
+        error = ErrorType.ERROR_TIMEOUT;
+        Log.w(TAG,"Timed out calculating CRC");
         return null;
     }
 
@@ -448,9 +471,11 @@ public class Rc522 {
             data[j]=uid[i];
 
         byte[] crc = calculateCrc(data);
+        if(crc == null){
+            return false;
+        }
         data[7] = crc[0];
         data[8] = crc[1];
-
         success = execute(COMMAND_TRANSCEIVE, data);
         return success && backLength == 0x18;
     }
@@ -482,9 +507,6 @@ public class Rc522 {
         if((readRegister(REGISTER_RXTX_STATUS) & 0x08) == 0){
             return false;
         }
-        if(success){
-            this.authenticated = true;
-        }
         return success;
     }
 
@@ -509,7 +531,6 @@ public class Rc522 {
      */
     public void stopCrypto(){
         clearBitMask(REGISTER_RXTX_STATUS, (byte) 0x08);
-        this.authenticated = false;
     }
 
     /**
@@ -525,6 +546,9 @@ public class Rc522 {
         data[0]=COMMAND_READ;
         data[1]=address;
         byte[] crc = calculateCrc(data);
+        if(crc == null){
+            return false;
+        }
         data[2] = crc[0];
         data[3] = crc[1];
         boolean success = execute(COMMAND_TRANSCEIVE, data);
@@ -565,6 +589,9 @@ public class Rc522 {
         buff[0] = COMMAND_WRITE;
         buff[1] = address;
         byte[] crc = calculateCrc(buff);
+        if(crc == null){
+            return false;
+        }
         buff[2] = crc[0];
         buff[3] = crc[1];
 
@@ -579,6 +606,9 @@ public class Rc522 {
         byte buffWrite[] = new byte[data.length + 2];
         System.arraycopy(data, 0, buffWrite, 0, data.length);
         crc = calculateCrc(buffWrite);
+        if(crc == null){
+            return false;
+        }
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
         success = execute(COMMAND_TRANSCEIVE, buffWrite);
@@ -612,6 +642,9 @@ public class Rc522 {
         buff[0] = COMMAND_INCREMENT;
         buff[1] = address;
         byte[] crc = calculateCrc(buff);
+        if(crc == null){
+            return false;
+        }
         buff[2] = crc[0];
         buff[3] = crc[1];
         boolean success = execute(COMMAND_TRANSCEIVE, buff);
@@ -621,6 +654,9 @@ public class Rc522 {
         byte buffWrite[] = new byte[6];
         System.arraycopy(intToByteArray(operand), 0, buffWrite, 0, 4);
         crc = calculateCrc(buffWrite);
+        if(crc == null){
+            return false;
+        }
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
         execute(COMMAND_TRANSCEIVE, buffWrite);
@@ -642,6 +678,9 @@ public class Rc522 {
         buff[0] = COMMAND_DECREMENT;
         buff[1] = address;
         byte[] crc = calculateCrc(buff);
+        if(crc == null){
+            return false;
+        }
         buff[2] = crc[0];
         buff[3] = crc[1];
         boolean success = execute(COMMAND_TRANSCEIVE, buff);
@@ -654,9 +693,11 @@ public class Rc522 {
         byte buffWrite[] = new byte[6];
         System.arraycopy(intToByteArray(operand), 0, buffWrite, 0, 4);
         crc = calculateCrc(buffWrite);
+        if(crc == null){
+            return false;
+        }
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
-        breakpoint = true;
         execute(COMMAND_TRANSCEIVE, buffWrite);
         return true;
     }
@@ -672,6 +713,9 @@ public class Rc522 {
         buff[0] = COMMAND_TRANSFER;
         buff[1] = address;
         byte[] crc = calculateCrc(buff);
+        if(crc == null){
+            return false;
+        }
         buff[2] = crc[0];
         buff[3] = crc[1];
         return execute(COMMAND_TRANSCEIVE, buff);
@@ -688,6 +732,9 @@ public class Rc522 {
         buff[0] = COMMAND_RESTORE;
         buff[1] = address;
         byte[] crc = calculateCrc(buff);
+        if(crc == null){
+            return false;
+        }
         buff[2] = crc[0];
         buff[3] = crc[1];
 
@@ -700,6 +747,9 @@ public class Rc522 {
         }
         byte buffWrite[] = {0,0,0,0,0,0};
         crc = calculateCrc(buffWrite);
+        if(crc == null){
+            return false;
+        }
         buffWrite[buffWrite.length - 2] = crc[0];
         buffWrite[buffWrite.length - 1] = crc[1];
         execute(COMMAND_TRANSCEIVE, buffWrite);
@@ -944,5 +994,33 @@ public class Rc522 {
 
     private void debugLog(String format, Object... args){
         debugLog(String.format(format, args));
+    }
+
+    /**
+     * Enum that defines possible values in decibels for RxGain bits on the RFCfgReg register
+     */
+    public enum RxGain{
+        DB_18(0x0),
+        DB_23(0b1<<4),
+        DB_33(0b100<<4),
+        DB_38(0b101<<4),
+        DB_43(0b110<<4),
+        DB_48(0b111<<4);
+
+        private byte value;
+        RxGain(int i) {
+            value = (byte)i;
+        }
+
+        public byte getValue(){
+            return value;
+        }
+    }
+
+    /**
+     * Enum of possible error types
+     */
+    enum ErrorType{
+        ERROR_TIMEOUT
     }
 }
