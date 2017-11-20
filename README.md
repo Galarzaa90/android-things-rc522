@@ -20,6 +20,20 @@ The connections vary based on the [board](https://developer.android.com/things/h
 
 **RST** pin is configured programatically.
 
+### Raspberry Pi 3
+![rfid-rc522_bb](https://user-images.githubusercontent.com/12865379/33002472-ad7a712a-cd71-11e7-8724-d8e1433de13a.png)
+
+| RC522 Pin | RPi Pin name | RPi Pin number |
+| --------- | ------- | -------------- |
+| SDA | GPIO8, CE0 | 24
+| SCK | GPIO11, SCKL | 23
+| MOSI | GPIO10, MOSI | 19
+| MISO | GPIO9, MISO | 21
+| GND | GND | 6, 9, 20, 25
+| RST | Any GPIO pin | --
+| 3.3V | 3V3V | 1, 17
+
+
 ## Installing
 This library is available at jCenter. To install add this to your module's build.gradle
 ```groovy
