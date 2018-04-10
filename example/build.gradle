@@ -1,5 +1,3 @@
-apply from: '../dependencies.gradle'
-
 apply plugin: 'com.android.application'
 
 android {
@@ -22,8 +20,7 @@ android {
 
 dependencies {
     implementation project(':rc522')
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
-    compileOnly 'com.google.android.things:androidthings:'+versions.thingsLib
-    implementation 'com.android.support:appcompat-v7:'+versions.support
+    compileOnly "com.google.android.things:androidthings:${versions.thingsLib}"
+    implementation "com.android.support:appcompat-v7:${versions.support}"
     implementation 'com.android.support.constraint:constraint-layout:1.0.2'
 }

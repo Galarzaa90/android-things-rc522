@@ -1,5 +1,3 @@
-apply from: '../dependencies.gradle'
-
 apply plugin: 'com.android.library'
 
 ext {
@@ -47,8 +45,8 @@ android {
 }
 
 dependencies {
-    compileOnly 'com.google.android.things:androidthings:'+versions.thingsLib
-    implementation 'com.android.support:support-annotations:'+versions.support
+    compileOnly "com.google.android.things:androidthings:${versions.thingsLib}"
+    implementation "com.android.support:support-annotations:${versions.support}"
 }
 
 apply from: '../bintray.gradle'
