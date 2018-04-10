@@ -67,7 +67,7 @@ public class MainActivty extends AppCompatActivity{
             SpiDevice spiDevice = pioService.openSpiDevice("SPI0.0");
             Gpio resetPin = pioService.openGpio("BCM25");
             /* Names based on NXP Pico i.MX7D I/O */
-            SpiDevice spiDevice = pioService.openSpiDevice("SPI3.1");
+            SpiDevice spiDevice = pioService.openSpiDevice("SPI3.0");
             Gpio resetPin = pioService.openGpio("GPIO5_IO00");
             /**;
             mRc522 = new Rc522(this, spiDevice, resetPin);
