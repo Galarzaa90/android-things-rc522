@@ -10,7 +10,7 @@ import android.widget.Toast;
 
 import com.galarzaa.androidthings.Rc522;
 import com.google.android.things.pio.Gpio;
-import com.google.android.things.pio.PeripheralManagerService;
+import com.google.android.things.pio.PeripheralManager;
 import com.google.android.things.pio.SpiDevice;
 
 import java.io.IOException;
@@ -48,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
                 ((Button)v).setText(R.string.reading);
             }
         });
-        PeripheralManagerService pioService = new PeripheralManagerService();
+        PeripheralManager pioService = PeripheralManager.getInstance();
         try {
             spiDevice = pioService.openSpiDevice(SPI_PORT);
             gpioReset = pioService.openGpio(PIN_RESET);
