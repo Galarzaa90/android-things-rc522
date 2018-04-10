@@ -8,7 +8,7 @@ android {
     defaultConfig {
         applicationId "com.galarzaa.androidthings.samples"
         minSdkVersion versions.minSdk
-        targetSdkVersion versions.compileSdk
+        targetSdkVersion versions.targetSdk
         versionCode versions.publishVersionCode
         versionName versions.publishVersion
     }
@@ -24,6 +24,6 @@ dependencies {
     implementation project(':rc522')
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     compileOnly 'com.google.android.things:androidthings:'+versions.thingsLib
-    implementation 'com.android.support:appcompat-v7:25.3.1'
+    implementation 'com.android.support:appcompat-v7:'+versions.support
     implementation 'com.android.support.constraint:constraint-layout:1.0.2'
 }
