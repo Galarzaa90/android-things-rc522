@@ -1,5 +1,3 @@
-apply from: '../dependencies.gradle'
-
 apply plugin: 'com.android.application'
 
 android {
@@ -8,7 +6,7 @@ android {
     defaultConfig {
         applicationId "com.galarzaa.androidthings.samples"
         minSdkVersion versions.minSdk
-        targetSdkVersion versions.compileSdk
+        targetSdkVersion versions.targetSdk
         versionCode versions.publishVersionCode
         versionName versions.publishVersion
     }
@@ -21,9 +19,8 @@ android {
 }
 
 dependencies {
-    compile project(':rc522')
-    compile fileTree(include: ['*.jar'], dir: 'libs')
-    provided 'com.google.android.things:androidthings:'+versions.thingsLib
-    compile 'com.android.support:appcompat-v7:25.3.1'
-    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+    implementation project(':rc522')
+    compileOnly "com.google.android.things:androidthings:${versions.thingsLib}"
+    implementation "com.android.support:appcompat-v7:${versions.support}"
+    implementation 'com.android.support.constraint:constraint-layout:1.0.2'
 }
