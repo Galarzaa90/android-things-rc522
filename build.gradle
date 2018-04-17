@@ -22,7 +22,7 @@ ext.versions = [
         compileSdk        : 26,
         targetSdk         : 26,
         buildTools        : '27.0.3',
-        publishVersion    : '0.3.0',
+        publishVersion    : '1.0.0',
         publishVersionCode: 7,
 
         thingsLib         : '0.7-devpreview',
