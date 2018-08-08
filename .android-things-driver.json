@@ -2,7 +2,7 @@
     "title": "RC522",
     "category": "RFID reader",
     "published-maven": {
-        "maven-url": "https://bintray.com",
+        "maven-url": "https://jcenter.bintray.com",
         "groupid": "com.galarzza.android-things",
         "artifactid": "rc522"
     },
