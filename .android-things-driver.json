@@ -3,7 +3,7 @@
     "category": "RFID reader",
     "published-maven": {
         "maven-url": "https://bintray.com",
-        "groupid": "com.galarzza.android-things",
+        "groupid": "com.galarzaa.android-things",
         "artifactid": "rc522"
     },
     "compatible-with": [
