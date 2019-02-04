@@ -36,10 +36,10 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mTagDetectedView = (TextView)findViewById(R.id.tag_read);
-        mTagUidView = (TextView)findViewById(R.id.tag_uid);
-        mTagResultsView = (TextView) findViewById(R.id.tag_results);
-        button = (Button)findViewById(R.id.button);
+        mTagDetectedView = findViewById(R.id.tag_read);
+        mTagUidView = findViewById(R.id.tag_uid);
+        mTagResultsView = findViewById(R.id.tag_results);
+        button = findViewById(R.id.button);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
