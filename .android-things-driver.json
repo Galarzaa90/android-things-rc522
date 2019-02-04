@@ -4,6 +4,7 @@
     "published-maven": {
         "maven-url": "https://jcenter.bintray.com",
         "groupid": "com.galarzza.android-things",
+
         "artifactid": "rc522"
     },
     "compatible-with": [
